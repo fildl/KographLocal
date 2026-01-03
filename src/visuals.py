@@ -19,6 +19,7 @@ class Visualizer:
         'primary': '#00d2d3',    # Cyan
         'secondary': '#ff9ff3',  # Pink
         'accent': '#feca57',     # Yellow
+        'subtext': '#aaaaaa',
         'gradient': ['#00d2d3', '#54a0ff', '#5f27cd']
     }
     
@@ -326,6 +327,281 @@ class Visualizer:
             marker_color=self.THEME_COLORS['primary'],
             marker_line_width=0,
             hovertemplate="<br><b>%{x}:00</b><br><b>Share</b>: %{y:.1f}%<br><b>Time</b>: %{customdata[0]}<extra></extra>",
+            hoverlabel=dict(bgcolor="black")
+        )
+        
+        return fig
+
+    def _calculate_streaks(self, df: pd.DataFrame, min_minutes=10) -> list[int]:
+        """
+        Calculate list of streak lengths (consecutive days with >= min_minutes reading).
+        """
+        if df.empty:
+            return []
+
+        # daily sums
+        daily = df.groupby('date')['duration'].sum()
+        # filter days meeting threshold
+        valid_days = daily[daily >= min_minutes * 60].index
+        valid_days = pd.Series(sorted(valid_days))
+        
+        if valid_days.empty:
+            return []
+            
+        streaks = []
+        current_streak = 1
+        
+        for i in range(1, len(valid_days)):
+            # Check if consecutive day
+            if (valid_days.iloc[i] - valid_days.iloc[i-1]).days == 1:
+                current_streak += 1
+            else:
+                streaks.append(current_streak)
+                current_streak = 1
+        streaks.append(current_streak)
+        
+        return streaks
+
+    def plot_streaks(self, year: int = None):
+        """
+        Histogram of reading streaks and summary stats.
+        """
+        df = self.data.copy()
+        if year:
+            df = df[df['year'] == year]
+            title = f'Reading Streaks ({year})'
+        else:
+            title = 'Reading Streaks (All Time)'
+
+        streaks = self._calculate_streaks(df)
+        
+        if not streaks:
+            return None
+            
+        # Stats
+        longest = max(streaks)
+        avg_streak = sum(streaks) / len(streaks)
+        total_streaks = len(streaks)
+        
+        # Prepare for Histogram
+        # We want to count how many times each streak length occurred
+        streak_counts = pd.Series(streaks).value_counts().reset_index()
+        streak_counts.columns = ['length', 'count']
+        streak_counts = streak_counts.sort_values('length')
+        
+        fig = px.bar(
+            streak_counts, 
+            x='length', 
+            y='count',
+            title=title,
+            text='count'
+        )
+        
+        # Annotation text
+        stats_text = (
+            f"<b>Longest Streak:</b> {longest} days<br>"
+            f"<b>Average Streak:</b> {avg_streak:.1f} days<br>"
+            f"<b>Total Streaks:</b> {total_streaks}"
+        )
+        
+        fig.add_annotation(
+            x=0.98,
+            y=0.98,
+            xref="paper",
+            yref="paper",
+            text=stats_text,
+            showarrow=False,
+            font=dict(size=14, color=self.THEME_COLORS['text']),
+            align="right",
+            bgcolor=self.THEME_COLORS['background'],
+            bordercolor=self.THEME_COLORS['subtext'],
+            borderwidth=1,
+            borderpad=10
+        )
+
+        fig.update_layout(
+            paper_bgcolor=self.THEME_COLORS['paper'],
+            plot_bgcolor=self.THEME_COLORS['background'],
+            font_color=self.THEME_COLORS['text'],
+            width=self.PLOT_WIDTH,
+            height=self.PLOT_HEIGHT,
+            margin=dict(t=80, l=50, r=50, b=50),
+            title_x=0.5,
+            showlegend=False,
+            xaxis=dict(
+                title='Streak Length (Days)',
+                dtick=1, # Show every integer
+                gridcolor=self.THEME_COLORS['grid'],
+                showgrid=False
+            ),
+            yaxis=dict(
+                title='Count',
+                gridcolor=self.THEME_COLORS['grid'],
+                showgrid=True
+            )
+        )
+        
+        return fig
+
+    def _calculate_daily_streaks_map(self, df: pd.DataFrame, min_minutes=10) -> dict:
+        """
+        Map each valid reading date to its current streak length.
+        Returns: {pd.Timestamp: int_streak_length}
+        """
+        if df.empty:
+            return {}
+
+        daily = df.groupby('date')['duration'].sum()
+        valid_dates = sorted(daily[daily >= min_minutes * 60].index)
+        
+        if not valid_dates:
+            return {}
+            
+        streak_map = {}
+        current_streak = []
+        
+        # We need to iterate and build streaks.
+        # This logic is slightly different: we want to assign the streak length 
+        # to ALL days in that streak.
+        
+        # Iterate through dates
+        temp_streak = [valid_dates[0]]
+        
+        for i in range(1, len(valid_dates)):
+            curr = valid_dates[i]
+            prev = valid_dates[i-1]
+            
+            if (curr - prev).days == 1:
+                # Part of same streak
+                temp_streak.append(curr)
+            else:
+                # Streak ended. Assign lengths.
+                length = len(temp_streak)
+                for d in temp_streak:
+                    streak_map[pd.to_datetime(d)] = length
+                # Start new streak
+                temp_streak = [curr]
+        
+        # Final streak
+        length = len(temp_streak)
+        for d in temp_streak:
+            streak_map[pd.to_datetime(d)] = length
+            
+        return streak_map
+
+    def plot_streak_calendar(self, year: int = None):
+        """
+        3x4 Month Grid Scatter plot showing streak lengths.
+        """
+        df = self.data.copy()
+        
+        if year:
+            df = df[df['year'] == year]
+            title = f'Streak Calendar ({year})'
+        else:
+            target_year = df['year'].max()
+            df = df[df['year'] == target_year]
+            title = f'Streak Calendar ({target_year})'
+            year = target_year
+
+        if df.empty:
+            return None
+
+        # Calculate streaks for this year's data
+        # Note: If a streak started in prev year, this naive filter cuts it.
+        # Ideally we'd calc streaks on full data then filter map, but for now specific year calc is acceptable.
+        streak_map = self._calculate_daily_streaks_map(df)
+        if not streak_map:
+            return None
+
+        max_streak = max(streak_map.values())
+
+        # Prepare subplots (same as reading calendar)
+        fig = make_subplots(
+            rows=3, cols=4, 
+            subplot_titles=[calendar.month_name[i] for i in range(1, 13)],
+            vertical_spacing=0.08,
+            horizontal_spacing=0.03
+        )
+
+        # Iterate through months
+        for month in range(1, 13):
+            row = (month - 1) // 4 + 1
+            col = (month - 1) % 4 + 1
+            
+            _, num_days = calendar.monthrange(year, month)
+            dates = pd.date_range(start=f"{year}-{month:02d}-01", end=f"{year}-{month:02d}-{num_days}")
+            
+            month_df = pd.DataFrame({'date': dates})
+            
+            # Map streak lengths
+            month_df['streak'] = month_df['date'].map(streak_map).fillna(0).astype(int)
+            
+            # Coordinates
+            month_df['day_of_week'] = month_df['date'].dt.dayofweek
+            
+            first_day_weekday = month_df.iloc[0]['date'].dayofweek
+            month_df['day_idx'] = month_df['date'].dt.day - 1
+            month_df['week_of_month'] = (month_df['day_idx'] + first_day_weekday) // 7
+            
+            month_df['hover_text'] = month_df.apply(
+                lambda x: f"<b>{x['date'].strftime('%b %d')}</b><br>Streak: {x['streak']} days" if x['streak'] > 0 else f"<b>{x['date'].strftime('%b %d')}</b><br>No Streak", 
+                axis=1
+            )
+            
+            # Show legend only on last
+            show_scale = (month == 12)
+            
+            # Line color
+            month_df['line_color'] = month_df['streak'].apply(
+                lambda x: self.THEME_COLORS['text'] if x > 0 else self.THEME_COLORS['background']
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=month_df['day_of_week'],
+                    y=5 - month_df['week_of_month'], 
+                    mode='markers',
+                    marker=dict(
+                        size=14,
+                        color=month_df['streak'],
+                        colorscale=[
+                            [0, '#333333'], 
+                            [0.01, self.THEME_COLORS['accent']], # Yellow start
+                            [1, self.THEME_COLORS['secondary']]  # Pink end
+                        ],
+                        cmin=0,
+                        cmax=max_streak,
+                        showscale=show_scale,
+                        colorbar=dict(
+                            title=dict(
+                                text="Streak Length (days)",
+                                side="right"
+                            ),
+                            thickness=15,
+                            len=0.7,
+                            y=0.5
+                        ) if show_scale else None,
+                        line=dict(width=1, color=month_df['line_color'])
+                    ),
+                    text=month_df['hover_text'],
+                    hoverinfo='text',
+                    showlegend=False
+                ),
+                row=row, col=col
+            )
+            
+            fig.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, range=[-0.5, 6.5], row=row, col=col)
+            fig.update_yaxes(showgrid=False, zeroline=False, showticklabels=False, range=[-0.5, 6.5], row=row, col=col)
+
+        fig.update_layout(
+            title=dict(text=title, x=0.5),
+            paper_bgcolor=self.THEME_COLORS['paper'],
+            plot_bgcolor=self.THEME_COLORS['background'],
+            font_color=self.THEME_COLORS['text'],
+            width=self.PLOT_WIDTH,
+            height=self.PLOT_HEIGHT,
+            margin=dict(t=100, l=50, r=50, b=50),
             hoverlabel=dict(bgcolor="black")
         )
         

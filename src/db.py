@@ -13,7 +13,32 @@ class DatabaseManager:
     def __init__(self, db_path: str = "data/statistics.sqlite3"):
         self.db_path = Path(db_path)
         self.conn = None
+        self._update_database()
         
+    def _update_database(self):
+        """Check for new statistics.sqlite3 on Kindle and copy if available."""
+        # Source directory (Kindle device)
+        source_path = Path("/Volumes/Kindle/koreader/settings/statistics.sqlite3")
+        
+        try:
+            # Check if Kindle is connected and file exists
+            if source_path.exists():
+                print(f"Found database on Kindle: {source_path}")
+                
+                # Check if we need to update (compare modification times or if local missing)
+                if not self.db_path.exists() or source_path.stat().st_mtime > self.db_path.stat().st_mtime:
+                    os.makedirs(self.db_path.parent, exist_ok=True)
+                    shutil.copy2(source_path, self.db_path)
+                    print(f"✓ Updated database from Kindle to: {self.db_path}")
+                else:
+                    print("✓ Local database is up to date with Kindle")
+            else:
+                # Kindle not connected
+                pass 
+                
+        except Exception as e:
+            print(f"Warning: Could not check/update from Kindle: {e}")
+
     def connect(self):
         """Establish connection to the SQLite database."""
         if not self.db_path.exists():

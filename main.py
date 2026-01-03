@@ -61,6 +61,26 @@ def main():
         if fig:
             save_plot(fig, 'time_of_day.html', str(year))
 
+    # 6. Streaks & Metrics
+    print("\n[Streaks & Metrics]")
+    # All Time
+    fig_all = viz.plot_streaks()
+    if fig_all:
+        save_plot(fig_all, 'streaks.html', 'all_time')
+        
+    # Per Year
+    for year in years:
+        fig = viz.plot_streaks(year=year)
+        if fig:
+            save_plot(fig, 'streaks.html', str(year))
+
+    # 7. Streak Calendar
+    print("\n[Streak Calendar]")
+    for year in years:
+        fig = viz.plot_streak_calendar(year=year)
+        if fig:
+            save_plot(fig, 'streak_calendar.html', str(year))
+
     print("\n--- Generation Complete ---")
 
 if __name__ == "__main__":
