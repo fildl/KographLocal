@@ -256,3 +256,77 @@ class Visualizer:
         )
         
         return fig
+
+    def plot_time_of_day(self, year: int = None):
+        """
+        Bar chart showing reading distribution across hours of the day (0-23).
+        """
+        df = self.data.copy()
+        
+        if year:
+            df = df[df['year'] == year]
+            title = f'Time of Day Distribution ({year})'
+        else:
+            title = 'Time of Day Distribution (All Time)'
+
+        if df.empty:
+            return None
+
+        # Group by hour
+        hourly = df.groupby('hour')['duration'].sum().reindex(range(24), fill_value=0).reset_index()
+        
+        # Calculate Percentage
+        total_duration = df['duration'].sum()
+        hourly['percentage'] = (hourly['duration'] / total_duration * 100) if total_duration > 0 else 0
+        hourly['hours'] = hourly['duration'] / 3600 # Keep for tooltip
+        
+        # Formatting for tooltip
+        hourly['formatted_time'] = hourly.apply(
+            lambda x: f"{int(x['duration'] // 3600)}h {int((x['duration'] % 3600) // 60)}m", 
+            axis=1
+        )
+        
+        # Create plot
+        fig = px.bar(
+            hourly, 
+            x='hour', 
+            y='percentage',
+            title=title,
+            custom_data=['formatted_time', 'percentage']
+        )
+        
+        # Styling
+        fig.update_layout(
+            paper_bgcolor=self.THEME_COLORS['paper'],
+            plot_bgcolor=self.THEME_COLORS['background'],
+            font_color=self.THEME_COLORS['text'],
+            showlegend=False,
+            title_x=0.5,
+            hovermode="x",
+            width=self.PLOT_WIDTH,
+            height=self.PLOT_HEIGHT,
+            margin=dict(t=80, l=50, r=50, b=50),
+            xaxis=dict(
+                tickmode='linear',
+                tick0=0,
+                dtick=1,
+                range=[-0.5, 23.5],
+                title="Hour of Day",
+                showgrid=False
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridcolor=self.THEME_COLORS['grid'],
+                title='Percentage of Reading Time (%)',
+                ticksuffix="%"
+            )
+        )
+        
+        fig.update_traces(
+            marker_color=self.THEME_COLORS['primary'],
+            marker_line_width=0,
+            hovertemplate="<br><b>%{x}:00</b><br><b>Share</b>: %{y:.1f}%<br><b>Time</b>: %{customdata[0]}<extra></extra>",
+            hoverlabel=dict(bgcolor="black")
+        )
+        
+        return fig

@@ -48,6 +48,19 @@ def main():
         if fig:
             save_plot(fig, 'reading_calendar.html', str(year))
 
+    # 5. Time of Day Distribution
+    print("\n[Time of Day]")
+    # All Time
+    fig_all = viz.plot_time_of_day()
+    if fig_all:
+        save_plot(fig_all, 'time_of_day.html', 'all_time')
+    
+    # Per Year
+    for year in years:
+        fig = viz.plot_time_of_day(year=year)
+        if fig:
+            save_plot(fig, 'time_of_day.html', str(year))
+
     print("\n--- Generation Complete ---")
 
 if __name__ == "__main__":
