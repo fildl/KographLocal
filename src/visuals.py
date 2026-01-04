@@ -660,25 +660,8 @@ class Visualizer:
                         'GlobalStart': global_start,
                         'GlobalFinish': global_end,
                         'Format': fmt,
-                        'id_book': book_id,
-                        'Type': 'Reading'
+                        'id_book': book_id
                     })
-                    
-                    # Add Gap segment
-                    gap_start = current_end + pd.Timedelta(days=1)
-                    gap_end = dates[i]
-                    if gap_end > gap_start:
-                        segments.append({
-                            'Title': title,
-                            'Start': gap_start,
-                            'Finish': gap_end, 
-                            'GlobalStart': global_start,
-                            'GlobalFinish': global_end,
-                            'Format': fmt,
-                            'id_book': book_id,
-                            'Type': 'Gap'
-                        })
-                    
                     # Start new segment
                     current_start = dates[i]
                     current_end = dates[i]
@@ -694,8 +677,7 @@ class Visualizer:
                 'GlobalStart': global_start,
                 'GlobalFinish': global_end,
                 'Format': fmt,
-                'id_book': book_id,
-                'Type': 'Reading'
+                'id_book': book_id
             })
             
         return pd.DataFrame(segments)
@@ -729,9 +711,13 @@ class Visualizer:
         # Sort by Start date
         segments_df = segments_df.sort_values('Start', ascending=False)
         
-        # Split into Reading and Gaps
-        reading_df = segments_df[segments_df['Type'] == 'Reading']
-        gaps_df = segments_df[segments_df['Type'] == 'Gap']
+        # Prepare Data Frames
+        reading_df = segments_df.copy()
+        
+        # Create Spans Data (Background)
+        # One row per book representing the full duration (Start to Finish)
+        spans_df = segments_df[['Title', 'GlobalStart', 'GlobalFinish', 'Format']].drop_duplicates()
+        spans_df = spans_df.rename(columns={'GlobalStart': 'Start', 'GlobalFinish': 'Finish'})
         
         # Assign colors
         unique_books = segments_df['Title'].unique()
@@ -739,56 +725,55 @@ class Visualizer:
         for i, book_title in enumerate(unique_books):
             color_map[book_title] = self.BOOK_COLORS[i % len(self.BOOK_COLORS)]
         
-        # 1. Plot Reading Segments (Solid)
+        # 1. Plot Background Spans (Opacity 0.3, Interactive)
+        # This layer handles the tooltip and provides visual continuity
         fig = px.timeline(
+            spans_df, 
+            x_start="Start", 
+            x_end="Finish", 
+            y="Title",
+            color="Title",
+            color_discrete_map=color_map,
+            opacity=0.3,
+            title=title,
+            pattern_shape="Format",
+            pattern_shape_map={'kindle': '', 'paperback': '/'},
+            custom_data=['Start', 'Finish'] # Used for tooltip
+        )
+        
+        # 2. Plot Reading Segments (Opacity 1.0, Non-Interactive)
+        # This layer shows actual reading sessions. Hover is skipped so mouse hits the background.
+        fig_reading = px.timeline(
             reading_df, 
             x_start="Start", 
             x_end="Finish", 
             y="Title",
-            color="Title", # Distinct colors per book
+            color="Title",
             color_discrete_map=color_map,
-            title=title,
-            pattern_shape="Format", # Distinguish Kindle vs Paperback
-            pattern_shape_map={
-                'kindle': '',      # Solid
-                'paperback': '/'   # Hatched
-            },
-            custom_data=['GlobalStart', 'GlobalFinish'] # Data for tooltip
+            opacity=1.0,
+            pattern_shape="Format",
+            pattern_shape_map={'kindle': '', 'paperback': '/'}
         )
         
-        # 2. Plot Gap Segments (Transparent)
-        if not gaps_df.empty:
-            fig_gaps = px.timeline(
-                gaps_df, 
-                x_start="Start", 
-                x_end="Finish", 
-                y="Title",
-                color="Title",
-                color_discrete_map=color_map,
-                opacity=0.3, # Semi-transparent
-                pattern_shape="Format",
-                pattern_shape_map={
-                    'kindle': '',
-                    'paperback': '/' 
-                },
-                custom_data=['GlobalStart', 'GlobalFinish']
-            )
-            # Add gap traces to main fig
-            fig.add_traces(fig_gaps.data)
+        # Set top layer to ignore hover, allowing fall-through to background
+        fig_reading.update_traces(hoverinfo='skip')
+        
+        # Add reading traces to main fig
+        fig.add_traces(fig_reading.data)
         
         # Calculate Annotations (Smart Text Placement per Book)
+        # We use spans_df directly since it represents the Book Envelope
         annotations = []
         
         # Heuristic for char width in "days" units. 
         # With pixels_per_day = 4, and approx 10px per char:
         char_days_width = 2.5 
         
-        # Group by Title to calc envelope for labeling
-        # Note: distinct books with same title? Unlikely for this user stats, but strictly should use id_book if possible.
-        # However, Y-axis is Title, so we group by Title to match the row.
-        for title_text, group in segments_df.groupby('Title'):
-            start = group['Start'].min()
-            end = group['Finish'].max()
+        # Iterate over spans (one per book)
+        for _, row in spans_df.iterrows():
+            title_text = row['Title']
+            start = row['Start']
+            end = row['Finish']
             duration = (end - start).days
             
             text_len_days = len(title_text) * char_days_width
@@ -798,9 +783,7 @@ class Visualizer:
             if duration > (text_len_days + total_days_span * 0.02): # Fits with padding?
                 x_pos = start + (end - start) / 2
                 x_anchor = 'center'
-                text_color = 'white' # Assume dark bars (or floating in dark void)
-                # If floating in void (gap), white is fine on dark bg. 
-                # If on bar, white is fine on color.
+                text_color = 'white' 
                 show_arrow = False
             else:
                 # 2. Try Right
