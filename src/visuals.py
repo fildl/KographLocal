@@ -640,6 +640,10 @@ class Visualizer:
                 
             dates = [pd.to_datetime(d) for d in dates]
             
+            # Global dates for tooltip
+            global_start = dates[0]
+            global_end = dates[-1]
+            
             # Find segments
             current_start = dates[0]
             current_end = dates[0]
@@ -653,9 +657,28 @@ class Visualizer:
                         'Title': title,
                         'Start': current_start,
                         'Finish': current_end + pd.Timedelta(days=1), # Add 1 day for visibility
+                        'GlobalStart': global_start,
+                        'GlobalFinish': global_end,
                         'Format': fmt,
-                        'id_book': book_id
+                        'id_book': book_id,
+                        'Type': 'Reading'
                     })
+                    
+                    # Add Gap segment
+                    gap_start = current_end + pd.Timedelta(days=1)
+                    gap_end = dates[i]
+                    if gap_end > gap_start:
+                        segments.append({
+                            'Title': title,
+                            'Start': gap_start,
+                            'Finish': gap_end, 
+                            'GlobalStart': global_start,
+                            'GlobalFinish': global_end,
+                            'Format': fmt,
+                            'id_book': book_id,
+                            'Type': 'Gap'
+                        })
+                    
                     # Start new segment
                     current_start = dates[i]
                     current_end = dates[i]
@@ -668,8 +691,11 @@ class Visualizer:
                 'Title': title,
                 'Start': current_start,
                 'Finish': current_end + pd.Timedelta(days=1),
+                'GlobalStart': global_start,
+                'GlobalFinish': global_end,
                 'Format': fmt,
-                'id_book': book_id
+                'id_book': book_id,
+                'Type': 'Reading'
             })
             
         return pd.DataFrame(segments)
@@ -703,14 +729,19 @@ class Visualizer:
         # Sort by Start date
         segments_df = segments_df.sort_values('Start', ascending=False)
         
+        # Split into Reading and Gaps
+        reading_df = segments_df[segments_df['Type'] == 'Reading']
+        gaps_df = segments_df[segments_df['Type'] == 'Gap']
+        
         # Assign colors
         unique_books = segments_df['Title'].unique()
         color_map = {}
         for i, book_title in enumerate(unique_books):
             color_map[book_title] = self.BOOK_COLORS[i % len(self.BOOK_COLORS)]
         
+        # 1. Plot Reading Segments (Solid)
         fig = px.timeline(
-            segments_df, 
+            reading_df, 
             x_start="Start", 
             x_end="Finish", 
             y="Title",
@@ -721,8 +752,29 @@ class Visualizer:
             pattern_shape_map={
                 'kindle': '',      # Solid
                 'paperback': '/'   # Hatched
-            }
+            },
+            custom_data=['GlobalStart', 'GlobalFinish'] # Data for tooltip
         )
+        
+        # 2. Plot Gap Segments (Transparent)
+        if not gaps_df.empty:
+            fig_gaps = px.timeline(
+                gaps_df, 
+                x_start="Start", 
+                x_end="Finish", 
+                y="Title",
+                color="Title",
+                color_discrete_map=color_map,
+                opacity=0.3, # Semi-transparent
+                pattern_shape="Format",
+                pattern_shape_map={
+                    'kindle': '',
+                    'paperback': '/' 
+                },
+                custom_data=['GlobalStart', 'GlobalFinish']
+            )
+            # Add gap traces to main fig
+            fig.add_traces(fig_gaps.data)
         
         # Calculate Annotations (Smart Text Placement per Book)
         annotations = []
@@ -803,7 +855,7 @@ class Visualizer:
 
         fig.update_traces(
             marker_line_width=0,
-            hovertemplate="<b>%{y}</b><br>Start: %{base|%b %d}<br>End: %{x|%b %d}<extra></extra>"
+            hovertemplate="<b>%{y}</b><br>Start: %{customdata[0]|%b %d}<br>End: %{customdata[1]|%b %d}<extra></extra>"
         )
         
         # Custom Legend for Format
