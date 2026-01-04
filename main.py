@@ -119,6 +119,32 @@ def main():
         if fig:
             save_plot(fig, 'timeline.html', str(year))
 
+    # 9. Daily Pattern
+    print("\n[Daily Pattern]")
+    # All Time
+    fig_all = viz.plot_daily_pattern()
+    if fig_all:
+        save_plot(fig_all, 'daily_pattern.html', 'all_time')
+    
+    # Per Year
+    for year in years:
+        fig = viz.plot_daily_pattern(year=year)
+        if fig:
+            save_plot(fig, 'daily_pattern.html', str(year))
+
+    # 10. Monthly Pattern
+    print("\n[Monthly Pattern]")
+    # All Time
+    fig_all = viz.plot_monthly_pattern()
+    if fig_all:
+        save_plot(fig_all, 'monthly_pattern.html', 'all_time')
+    
+    # Per Year
+    for year in years:
+        fig = viz.plot_monthly_pattern(year=year)
+        if fig:
+            save_plot(fig, 'monthly_pattern.html', str(year))
+
     print("\n--- Generation Complete ---")
 
 if __name__ == "__main__":
