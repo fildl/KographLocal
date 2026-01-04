@@ -381,7 +381,6 @@ class Visualizer:
         # Stats
         longest = max(streaks)
         avg_streak = sum(streaks) / len(streaks)
-        total_streaks = len(streaks)
         
         # Prepare for Histogram
         # We want to count how many times each streak length occurred
@@ -393,15 +392,14 @@ class Visualizer:
             streak_counts, 
             x='length', 
             y='count',
-            title=title,
-            text='count'
+            title=title
+            # Removed text='count' to hide numbers inside bins
         )
         
         # Annotation text
         stats_text = (
             f"<b>Longest Streak:</b> {longest} days<br>"
             f"<b>Average Streak:</b> {avg_streak:.1f} days<br>"
-            f"<b>Total Streaks:</b> {total_streaks}"
         )
         
         fig.add_annotation(
@@ -439,6 +437,14 @@ class Visualizer:
                 gridcolor=self.THEME_COLORS['grid'],
                 showgrid=True
             )
+        )
+        
+        fig.update_traces(
+            marker_color=self.THEME_COLORS['secondary'],
+            marker_line_width=0,
+            # Updated hovertemplate to match weekly_activity style
+            hovertemplate="<br><b>Length</b>: %{x} days<br><b>Count</b>: %{y}<extra></extra>",
+            hoverlabel=dict(bgcolor="black")
         )
         
         return fig
