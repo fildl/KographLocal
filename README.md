@@ -37,19 +37,17 @@ Kograph Local is a Python-based generator that visualizes your **Koreader readin
         ```bash
         pip install -r requirements.txt
         ```
-        *(pandas, plotly, numpy)*
 
 2.  **Data Setup**:
     -   **Kindle**: Connect your Kindle. The script looks for `statistics.sqlite3` in `/Volumes/Kindle/koreader/settings/` and copies it to `data/`.
     -   **Paper Books**: Create `data/paper_books.csv` with the following columns:
-        ```csv
-        title, authors, pages, start_date, end_date, language
-        The Great Gatsby, F. Scott Fitzgerald, 180, 2024-01-01, 2024-01-10, en
-        ```
+        | title | authors | pages | start_date | end_date | language |
+        | --- | --- | --- | --- | --- | --- |
+        | The Great Gatsby | F. Scott Fitzgerald | 180 | 2024-01-01 | 2024-01-10 | en |
 
 ## Usage
 
-Simply run the main script:
+Run the main script:
 
 ```bash
 python main.py
@@ -80,5 +78,5 @@ It will:
 
 ## Notes
 
--   **Accuracy**: Proper `start_date` and `end_date` in `paper_books.csv` are crucial for the timeline and calendar accuracy.
+-   **Accuracy**: Proper `start_date` and `end_date` in `paper_books.csv` are crucial. This data is used effectively in the **Book Timeline**, **Cumulative Growth**, and **Books Completed** charts. Note that other detailed statistics (Streaks, Daily Patterns, etc.) currently rely only on Kindle data to ensure precision.
 -   **Koreader Bugs**: The script automatically filters out "ghost" reading sessions (< 5 mins) and fixes zero-duration bugs common in Koreader stats.
