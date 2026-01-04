@@ -48,6 +48,16 @@ class DataProcessor:
         # 1. Negative durations or zero duration
         self.merged_df = self.merged_df[self.merged_df['duration'] > 0].copy()
         
+        # Filter: Exclude books with < 5 minutes total reading time (noise/accidental opens)
+        book_durations = self.merged_df.groupby('id_book')['duration'].sum()
+        valid_books = book_durations[book_durations >= 300].index # 300 seconds = 5 mins
+        
+        dropped_count = self.merged_df['id_book'].nunique() - len(valid_books)
+        if dropped_count > 0:
+            print(f"Dropped {dropped_count} books with < 5 minutes reading time.")
+            
+        self.merged_df = self.merged_df[self.merged_df['id_book'].isin(valid_books)].copy()
+        
         # 2. Ghost sessions (optional: filter extremely short reads if needed, keeping > 1s for now)
         
         # Sort for sessionization
