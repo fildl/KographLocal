@@ -56,6 +56,19 @@ class DashboardGenerator:
         </div>
             """
 
+        # Pages Trend Section
+        pages_trend_html = ""
+        if 'cumulative_pages' in self.plots:
+            pages_trend_html = f"""
+        <!-- Trends -->
+        <div class="section">
+            <div class="section-title">Pages Trend</div>
+            <div class="plot-container">
+                {self.plots.get('cumulative_pages', '')}
+            </div>
+        </div>
+            """
+
         # HTML Template
         html_content = f"""
 <!DOCTYPE html>
@@ -177,6 +190,8 @@ class DashboardGenerator:
                 {self.plots.get('session_duration', '')}
             </div>
         </div>
+
+        {pages_trend_html}
 
         {reading_calendar_html}
 

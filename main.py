@@ -128,6 +128,12 @@ def main():
     for year in years:
         process_plot(viz.plot_session_duration(year=year), 'session_duration', str(year))
 
+    # 12. Cumulative Pages
+    print("\n[Cumulative Pages]")
+    process_plot(viz_timeline.plot_cumulative_pages(), 'cumulative_pages', 'all_time')
+    for year in years:
+        process_plot(viz_timeline.plot_cumulative_pages(year=year), 'cumulative_pages', str(year))
+
     # --- Generate Dashboards ---
     print("\n[Generating Dashboards]")
     for key, generator in generators.items():

@@ -1226,9 +1226,90 @@ class Visualizer:
             row=1, col=2
         )
         
+    def plot_cumulative_pages(self, year: int = None):
+        """
+        Stacked Area chart of cumulative pages read over time, split by format.
+        """
+        df = self.data.copy()
+        if 'format' not in df.columns:
+            df['format'] = 'kindle'
+            
+        if year:
+            df = df[df['year'] == year]
+            title = f'Cumulative Pages Read ({year})'
+        else:
+            title = 'Cumulative Pages Read (All Time)'
+
+        if df.empty or 'pages_read' not in df.columns:
+            return None
+            
+        # 1. Aggregate Daily Pages by Format
+        daily_pages = df.groupby(['date', 'format'])['pages_read'].sum().reset_index()
+        
+        # 2. Pivot to ensure full date coverage for all formats (fill 0)
+        # Create full date range to handle gaps
+        min_date = daily_pages['date'].min()
+        max_date = daily_pages['date'].max()
+        all_dates = pd.date_range(start=min_date, end=max_date, freq='D').date
+        
+        pivot_df = daily_pages.pivot(index='date', columns='format', values='pages_read').reindex(all_dates, fill_value=0)
+        pivot_df.index.name = 'date'
+        
+        # 3. Calculate Cumulative Sum
+        cumulative_df = pivot_df.cumsum()
+        
+        # 4. Melt back for Plotly
+        plot_df = cumulative_df.reset_index().melt(
+            id_vars='date', 
+            var_name='Format', 
+            value_name='Cumulative Pages'
+        )
+        
+        # Color Mapping
+        color_map = {
+            'kindle': self.THEME_COLORS['primary'],   # Cyan
+            'paper': self.THEME_COLORS['accent']      # Yellow
+        }
+        
+        # Plot
+        fig = px.area(
+            plot_df,
+            x='date',
+            y='Cumulative Pages',
+            color='Format',
+            title=title,
+            color_discrete_map=color_map
+        )
+        
+        fig.update_layout(
+            paper_bgcolor=self.THEME_COLORS['paper'],
+            plot_bgcolor=self.THEME_COLORS['background'],
+            font_color=self.THEME_COLORS['text'],
+            width=self.PLOT_WIDTH,
+            height=self.PLOT_HEIGHT,
+            margin=dict(t=80, l=50, r=50, b=50),
+            title_x=0.5,
+            xaxis=dict(
+                gridcolor=self.THEME_COLORS['grid'],
+                showgrid=True
+            ),
+            yaxis=dict(
+                gridcolor=self.THEME_COLORS['grid'],
+                showgrid=True,
+                title='Total Pages'
+            ),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
         fig.update_traces(
-            marker_line_width=0,
-            hoverlabel=dict(bgcolor="black")
+            hoverlabel=dict(bgcolor="black"),
+            hovertemplate="<b>%{x}</b><br>%{y:.0f} Pages<extra></extra>"
         )
         
         return fig

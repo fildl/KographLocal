@@ -43,6 +43,9 @@ class DataProcessor:
             
         # Add format column
         self.merged_df['format'] = 'kindle'
+        
+        # Add pages_read column (1 row = 1 page read event)
+        self.merged_df['pages_read'] = 1
 
         # Fix known Koreader bugs
         # 1. Negative durations or zero duration
@@ -100,7 +103,10 @@ class DataProcessor:
                     
                     if days_count == 0: continue
                     
+                    if days_count == 0: continue
+                    
                     daily_seconds = total_seconds / days_count
+                    daily_pages = pages / days_count
                     
                     # Generate a unique pseudo-ID (negative to distinct from Kindle IDs)
                     pseudo_id = -(abs(hash(row['title'])) % 1000000)
@@ -112,12 +118,13 @@ class DataProcessor:
                         synthetic_rows.append({
                             'id_book': pseudo_id,
                             'duration': daily_seconds,
+                            'pages_read': daily_pages,
                             'start_datetime': session_time,
                             'title': row['title'],
                             'authors': row['authors'],
                             'pages': row['pages'],
                             'language': row['language'] if 'language' in row else 'en',
-                            'format': 'paperback',
+                            'format': 'paper',
                             # Add enriched columns manually or re-enrich?
                             # Re-enriching is safer usually, or just add what we strictly need for visuals
                             'date': session_time.date(),
