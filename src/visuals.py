@@ -612,3 +612,254 @@ class Visualizer:
         )
         
         return fig
+
+    # Book colors for consistent visualization
+    BOOK_COLORS = [
+        '#ff6b9d', '#feca57', '#48dbfb', '#0abde3', '#ee5a6f',
+        '#ff9ff3', '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43',
+        '#1dd1a1', '#576574', '#c44569', '#f8b500', '#6c5ce7'
+    ]
+
+    def _calculate_book_segments(self, df: pd.DataFrame, gap_days=7) -> pd.DataFrame:
+        """
+        Split book reading into segments if there are gaps > gap_days.
+        Returns DataFrame suitable for px.timeline.
+        """
+        segments = []
+        
+        # Group by book
+        for book_id, book_df in df.groupby('id_book'):
+            # Get metadata from first row
+            title = book_df['title'].iloc[0]
+            fmt = book_df['format'].iloc[0] if 'format' in book_df.columns else 'kindle'
+            
+            # Get all unique reading dates
+            dates = sorted(book_df['date'].unique())
+            if not dates:
+                continue
+                
+            dates = [pd.to_datetime(d) for d in dates]
+            
+            # Find segments
+            current_start = dates[0]
+            current_end = dates[0]
+            
+            for i in range(1, len(dates)):
+                diff = (dates[i] - dates[i-1]).days
+                
+                if diff > gap_days:
+                    # End previous segment
+                    segments.append({
+                        'Title': title,
+                        'Start': current_start,
+                        'Finish': current_end + pd.Timedelta(days=1), # Add 1 day for visibility
+                        'Format': fmt,
+                        'id_book': book_id
+                    })
+                    # Start new segment
+                    current_start = dates[i]
+                    current_end = dates[i]
+                else:
+                    # Extend segment
+                    current_end = dates[i]
+            
+            # Add final segment
+            segments.append({
+                'Title': title,
+                'Start': current_start,
+                'Finish': current_end + pd.Timedelta(days=1),
+                'Format': fmt,
+                'id_book': book_id
+            })
+            
+        return pd.DataFrame(segments)
+
+    def plot_book_timeline(self, year: int = None):
+        """
+        Gantt chart of book reading timeline with smart labeling.
+        """
+        df = self.data.copy()
+        
+        if year:
+            df = df[df['year'] == year]
+            title = f'Book Timeline ({year})'
+        else:
+            title = 'Book Timeline (All Time)'
+
+        if df.empty:
+            return None
+
+        segments_df = self._calculate_book_segments(df)
+        
+        if segments_df.empty:
+            return None
+            
+        # Determine global time range to check boundaries
+        min_date = segments_df['Start'].min()
+        max_date = segments_df['Finish'].max()
+        total_days_span = (max_date - min_date).days
+        if total_days_span < 1: total_days_span = 1
+        
+        # Sort by Start date
+        segments_df = segments_df.sort_values('Start', ascending=False)
+        
+        # Assign colors
+        unique_books = segments_df['Title'].unique()
+        color_map = {}
+        for i, book_title in enumerate(unique_books):
+            color_map[book_title] = self.BOOK_COLORS[i % len(self.BOOK_COLORS)]
+        
+        fig = px.timeline(
+            segments_df, 
+            x_start="Start", 
+            x_end="Finish", 
+            y="Title",
+            color="Title", # Distinct colors per book
+            color_discrete_map=color_map,
+            title=title,
+            pattern_shape="Format", # Distinguish Kindle vs Paperback
+            pattern_shape_map={
+                'kindle': '',      # Solid
+                'paperback': '/'   # Hatched
+            }
+        )
+        
+        # Calculate Annotations (Smart Text Placement per Book)
+        annotations = []
+        
+        # Heuristic for char width in "days" units. 
+        # With pixels_per_day = 4, and approx 10px per char:
+        char_days_width = 2.5 
+        
+        # Group by Title to calc envelope for labeling
+        # Note: distinct books with same title? Unlikely for this user stats, but strictly should use id_book if possible.
+        # However, Y-axis is Title, so we group by Title to match the row.
+        for title_text, group in segments_df.groupby('Title'):
+            start = group['Start'].min()
+            end = group['Finish'].max()
+            duration = (end - start).days
+            
+            text_len_days = len(title_text) * char_days_width
+            
+            # Decide position
+            # 1. Inside
+            if duration > (text_len_days + total_days_span * 0.02): # Fits with padding?
+                x_pos = start + (end - start) / 2
+                x_anchor = 'center'
+                text_color = 'white' # Assume dark bars (or floating in dark void)
+                # If floating in void (gap), white is fine on dark bg. 
+                # If on bar, white is fine on color.
+                show_arrow = False
+            else:
+                # 2. Try Right
+                space_right = (max_date - end).days
+                if space_right > (text_len_days + total_days_span * 0.02):
+                    x_pos = end + pd.Timedelta(days=total_days_span * 0.01) # Small padding
+                    x_anchor = 'left'
+                    text_color = self.THEME_COLORS['text']
+                    show_arrow = False
+                else:
+                    # 3. Must go Left
+                    x_pos = start - pd.Timedelta(days=total_days_span * 0.01)
+                    x_anchor = 'right'
+                    text_color = self.THEME_COLORS['text']
+                    show_arrow = False
+            
+            annotations.append(dict(
+                x=x_pos,
+                y=title_text, # Y is the category name
+                text=title_text,
+                showarrow=show_arrow,
+                xanchor=x_anchor,
+                yanchor='middle',
+                font=dict(color=text_color, size=11),
+                bgcolor=None
+            ))
+
+        fig.update_layout(
+            paper_bgcolor=self.THEME_COLORS['paper'],
+            plot_bgcolor=self.THEME_COLORS['background'],
+            font_color=self.THEME_COLORS['text'],
+            width=self.PLOT_WIDTH + 200, 
+            height=max(500, len(unique_books) * 35 + 100),
+            margin=dict(t=80, l=50, r=50, b=50), # Reduced left margin since labels are on plot
+            title_x=0.5,
+            showlegend=False, # Hide legend as colors correspond to bars which have labels
+            xaxis=dict(
+                gridcolor=self.THEME_COLORS['grid'],
+                title=None
+            ),
+            yaxis=dict(
+                gridcolor=self.THEME_COLORS['grid'],
+                title=None,
+                showticklabels=False, # Hide axis labels
+                automargin=True
+            ),
+            annotations=annotations
+        )
+        
+        # Order
+        fig.update_yaxes(categoryorder='array', categoryarray=unique_books[::-1])
+
+        fig.update_traces(
+            marker_line_width=0,
+            hovertemplate="<b>%{y}</b><br>Start: %{base|%b %d}<br>End: %{x|%b %d}<extra></extra>"
+        )
+        
+        # Custom Legend for Format
+        # 1. Hide default legend (titles)
+        for trace in fig.data:
+            trace.showlegend = False
+            
+        # 2. Add dummy traces for "Kindle" and "Physical Book"
+        fig.add_trace(go.Bar(
+            x=[None], y=[None],
+            name='Kindle',
+            marker=dict(color=self.THEME_COLORS['text'], pattern_shape=''),
+            showlegend=True
+        ))
+        
+        fig.add_trace(go.Bar(
+            x=[None], y=[None],
+            name='Paperback',
+            marker=dict(color=self.THEME_COLORS['text'], pattern_shape='/'),
+            showlegend=True
+        ))
+        
+        # Dynamic Width for Horizontal Scrolling (Fixed Height)
+        pixels_per_day = 4 # ~1500px per year
+        dynamic_width = max(self.PLOT_WIDTH, total_days_span * pixels_per_day)
+        
+        fig.update_layout(
+            paper_bgcolor=self.THEME_COLORS['paper'],
+            plot_bgcolor=self.THEME_COLORS['background'],
+            font_color=self.THEME_COLORS['text'],
+            width=dynamic_width,
+            height=self.PLOT_HEIGHT, # Fixed height as requested
+            autosize=False,
+            margin=dict(t=80, l=50, r=50, b=50), # Minimal label margin, relying on on-chart labels
+            title=dict(text=title, x=0.5, xanchor='center'), # Title centered on full width
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="left",
+                x=0,
+                bgcolor='rgba(0,0,0,0)'
+            ),
+            xaxis=dict(
+                gridcolor=self.THEME_COLORS['grid'],
+                title=None,
+                side='top' # Put dates on top for better readability on long scroll? Or keep bottom. Bottom is standard.
+            ),
+            yaxis=dict(
+                gridcolor=self.THEME_COLORS['grid'],
+                title=None,
+                showticklabels=False, 
+                automargin=True
+            ),
+            annotations=annotations
+        )
+
+        return fig

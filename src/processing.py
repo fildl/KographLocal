@@ -14,7 +14,7 @@ class DataProcessor:
         self.sessions_df = None
 
     def process(self):
-        """Run the full processing pipeline."""
+        """Run the full processing pipeline for Kindle data."""
         self._clean_and_merge()
         self._enrich_data()
         self._create_sessions()
@@ -40,6 +40,9 @@ class DataProcessor:
         # Clean language code (e.g., "it-IT" -> "it")
         if 'language' in self.merged_df.columns:
             self.merged_df['language'] = self.merged_df['language'].str.split('-').str[0]
+            
+        # Add format column
+        self.merged_df['format'] = 'kindle'
 
         # Fix known Koreader bugs
         # 1. Negative durations or zero duration
@@ -49,6 +52,89 @@ class DataProcessor:
         
         # Sort for sessionization
         self.merged_df.sort_values(['id_book', 'start_datetime'], inplace=True)
+
+    def get_data_with_paper_books(self, csv_path):
+        """
+        Return a copy of the data combined with paper books from CSV.
+        Does not modify inner state.
+        """
+        if self.merged_df is None:
+            return None
+            
+        combined_df = self.merged_df.copy()
+        
+        try:
+            # Read CSV with flexible whitespace handling
+            paper_df = pd.read_csv(csv_path, skipinitialspace=True)
+            paper_df.columns = paper_df.columns.str.strip()
+            
+            synthetic_rows = []
+            
+            for idx, row in paper_df.iterrows():
+                try:
+                    start_date = pd.to_datetime(row['start_date'])
+                    end_date = pd.to_datetime(row['end_date'])
+                    
+                    if pd.isna(start_date) or pd.isna(end_date):
+                        continue
+                        
+                    pages = float(row['pages']) if pd.notna(row['pages']) else 0
+                    if pages <= 0: continue
+                    
+                    # Estimate total duration: 2 minutes per page
+                    total_seconds = pages * 2 * 60
+                    
+                    # Date range
+                    date_range = pd.date_range(start=start_date, end=end_date, freq='D')
+                    days_count = len(date_range)
+                    
+                    if days_count == 0: continue
+                    
+                    daily_seconds = total_seconds / days_count
+                    
+                    # Generate a unique pseudo-ID (negative to distinct from Kindle IDs)
+                    pseudo_id = -(abs(hash(row['title'])) % 1000000)
+                    
+                    for d in date_range:
+                        # Create a "session" at 12:00 PM for each day
+                        session_time = d + pd.Timedelta(hours=12)
+                        
+                        synthetic_rows.append({
+                            'id_book': pseudo_id,
+                            'duration': daily_seconds,
+                            'start_datetime': session_time,
+                            'title': row['title'],
+                            'authors': row['authors'],
+                            'pages': row['pages'],
+                            'language': row['language'] if 'language' in row else 'en',
+                            'format': 'paperback',
+                            # Add enriched columns manually or re-enrich?
+                            # Re-enriching is safer usually, or just add what we strictly need for visuals
+                            'date': session_time.date(),
+                            'year': session_time.year,
+                            'month': session_time.month,
+                            'day_of_week': session_time.dayofweek,
+                            'hour': session_time.hour,
+                            'minute': session_time.minute
+                        })
+                        
+                except Exception as e:
+                    print(f"Error processing paper book row {idx}: {e}")
+                    continue
+            
+            if synthetic_rows:
+                synthetic_df = pd.DataFrame(synthetic_rows)
+                # Concatenate with main dataframe
+                combined_df = pd.concat([combined_df, synthetic_df], ignore_index=True)
+                # Re-sort
+                combined_df.sort_values('start_datetime', inplace=True)
+                print(f"Added {len(paper_df)} paper books to combined dataset.")
+                
+            return combined_df
+                
+        except Exception as e:
+            print(f"Failed to load paper books from {csv_path}: {e}")
+            return combined_df
 
     def _enrich_data(self):
         """Add time-based features."""
