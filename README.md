@@ -19,6 +19,16 @@ Kograph Local is a Python-based generator that visualizes your **Koreader readin
     -   **Books Completed**: Bar chart showing books finished per month (Yearly) and per quarter (All Time).
 -   **Responsive Design**: Dark-themed dashboard optimized for desktop viewing.
 
+## Showcase
+
+| Book Timeline | Cumulative Growth |
+|:---:|:---:|
+| ![Timeline](assets/screenshots/timeline.png) | ![Growth](assets/screenshots/cumulative_pages.png) |
+
+| Reading Calendar | Time Distribution |
+|:---:|:---:|
+| ![Calendar](assets/screenshots/reading_calendar.png) | ![Time](assets/screenshots/time_distribution.png) |
+
 ## Setup
 
 1.  **Requirements**:

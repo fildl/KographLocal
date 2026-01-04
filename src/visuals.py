@@ -370,7 +370,8 @@ class Visualizer:
                 showgrid=True,
                 gridcolor=self.THEME_COLORS['grid'],
                 title='Percentage of Reading Time (%)',
-                ticksuffix="%"
+                ticksuffix="%",
+                rangemode='tozero'
             )
         )
         
