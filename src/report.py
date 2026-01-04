@@ -69,6 +69,19 @@ class DashboardGenerator:
         </div>
             """
 
+        # Books Completed Section
+        books_completed_html = ""
+        if 'books_completed' in self.plots:
+            books_completed_html = f"""
+        <!-- Books Completed -->
+        <div class="section">
+            <div class="section-title">Books Finished</div>
+            <div class="plot-container">
+                {self.plots.get('books_completed', '')}
+            </div>
+        </div>
+            """
+
         # HTML Template
         html_content = f"""
 <!DOCTYPE html>
@@ -192,6 +205,8 @@ class DashboardGenerator:
         </div>
 
         {pages_trend_html}
+
+        {books_completed_html}
 
         {reading_calendar_html}
 

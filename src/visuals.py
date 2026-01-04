@@ -1252,7 +1252,7 @@ class Visualizer:
         max_date = daily_pages['date'].max()
         all_dates = pd.date_range(start=min_date, end=max_date, freq='D').date
         
-        pivot_df = daily_pages.pivot(index='date', columns='format', values='pages_read').reindex(all_dates, fill_value=0)
+        pivot_df = daily_pages.pivot(index='date', columns='format', values='pages_read').reindex(all_dates, fill_value=0).fillna(0)
         pivot_df.index.name = 'date'
         
         # 3. Calculate Cumulative Sum
@@ -1312,4 +1312,122 @@ class Visualizer:
             hovertemplate="<b>%{x}</b><br>%{y:.0f} Pages<extra></extra>"
         )
         
+        return fig
+
+    def plot_books_completed(self, year: int = None):
+        """
+        Bar chart of books completed over time.
+        Yearly: Aggregated by Month.
+        All Time: Aggregated by Quarter.
+        Completion Date = Last date a book was read.
+        """
+        df = self.data.copy()
+        
+        # 1. Determine Finish Date for each book
+        # Group by book and get the last reading date
+        books_finished = df.groupby(['id_book', 'title'])['start_datetime'].max().reset_index()
+        books_finished.columns = ['id_book', 'title', 'finish_date']
+        
+        # 2. Filter by Year
+        if year:
+            books_finished = books_finished[books_finished['finish_date'].dt.year == year]
+            title_text = f'Books Completed ({year})'
+            freq = 'MS' # Month Start for cleaner alignment
+            x_format = '%B'
+        else:
+            title_text = 'Books Completed (All Time)'
+            freq = 'QS' # Quarter Start
+            x_format = '%Y Q%q'
+
+        if books_finished.empty and not year:
+            # Only return None if empty AND strictly no container needed?
+            # Actually, for year view, we want to show empty chart if filtered year is empty? 
+            # Or assume valid year passed.
+            if year:
+                 # Initialize empty DF if needed to show 0-bar chart, but usually we can proceed
+                 pass
+            else:
+                return None
+            
+        # 3. Resample
+        books_finished.set_index('finish_date', inplace=True)
+        
+        # Aggregation: Count and List of Titles
+        # customized aggregation to get list of titles
+        def get_titles(series):
+            return '<br>'.join([f"• {t}" for t in series])
+            
+        resampled = books_finished.resample(freq).agg({
+            'title': ['count', get_titles]
+        })
+        
+        # Flatten columns
+        resampled.columns = ['count', 'titles_list']
+        
+        # Force Full Range if Year is selected
+        if year:
+            full_year_index = pd.date_range(start=f'{year}-01-01', end=f'{year}-12-01', freq='MS')
+            resampled = resampled.reindex(full_year_index)
+            resampled.index.name = 'finish_date'
+            
+        # Fill NaNs from reindex
+        resampled['count'] = resampled['count'].fillna(0)
+        resampled['titles_list'] = resampled['titles_list'].fillna('')
+        
+        resampled = resampled.reset_index()
+        
+        # Prepare X-Axis Column
+        x_col = 'finish_date'
+        if not year:
+            # Custom Quarter Labels: "2025 Q1"
+            resampled['quarter_label'] = resampled['finish_date'].apply(lambda d: f"{d.year} Q{d.quarter}")
+            x_col = 'quarter_label'
+        
+        # 4. Plot
+        fig = px.bar(
+            resampled,
+            x=x_col,
+            y='count',
+            title=title_text,
+            labels={'finish_date': 'Date', 'quarter_label': 'Quarter', 'count': 'Books Completed'},
+        )
+        
+        fig.update_layout(
+            paper_bgcolor=self.THEME_COLORS['paper'],
+            plot_bgcolor=self.THEME_COLORS['background'],
+            font_color=self.THEME_COLORS['text'],
+            width=self.PLOT_WIDTH,
+            height=self.PLOT_HEIGHT,
+            margin=dict(t=80, l=50, r=50, b=50),
+            title_x=0.5,
+            xaxis=dict(
+                gridcolor=self.THEME_COLORS['grid'],
+                showgrid=False
+            ),
+            yaxis=dict(
+                gridcolor=self.THEME_COLORS['grid'],
+                showgrid=True,
+                dtick=1 # Ensure integer ticks
+            ),
+            bargap=0.2
+        )
+        
+        # Update Bars & Format
+        hover_template = "<b>%{x}</b><br>Count: %{y}<br><br>%{customdata}<extra></extra>"
+        if year:
+            # Yearly View: Date Axis
+            fig.update_xaxes(dtick="M1", tickformat="%b")
+            fig.update_traces(hovertemplate="<b>%{x|%B %Y}</b><br>Count: %{y}<br><br>%{customdata}<extra></extra>")
+        else:
+            # All Time View: Categorical Quarter Strings
+            fig.update_xaxes(type='category')
+            fig.update_traces(hovertemplate="<b>%{x}</b><br>Count: %{y}<br><br>%{customdata}<extra></extra>")
+        
+        fig.update_traces(
+            marker_color=self.THEME_COLORS['secondary'], 
+            marker_line_width=0,
+            hoverlabel=dict(bgcolor="black"),
+            customdata=resampled['titles_list']
+        )
+            
         return fig

@@ -134,6 +134,12 @@ def main():
     for year in years:
         process_plot(viz_timeline.plot_cumulative_pages(year=year), 'cumulative_pages', str(year))
 
+    # 13. Books Completed
+    print("\n[Books Completed]")
+    process_plot(viz_timeline.plot_books_completed(), 'books_completed', 'all_time')
+    for year in years:
+        process_plot(viz_timeline.plot_books_completed(year=year), 'books_completed', str(year))
+
     # --- Generate Dashboards ---
     print("\n[Generating Dashboards]")
     for key, generator in generators.items():

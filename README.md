@@ -16,6 +16,7 @@ Kograph Local is a Python-based generator that visualizes your **Koreader readin
     -   **Time of Day**: Radar/Area chart showing when you read most.
     -   **Sessions**: Average session duration analysis by weekday and month.
     -   **Cumulative Growth**: Stacked area chart showing total pages read over time (Kindle vs Paper).
+    -   **Books Completed**: Bar chart showing books finished per month (Yearly) and per quarter (All Time).
 -   **Responsive Design**: Dark-themed dashboard optimized for desktop viewing.
 
 ## Setup
