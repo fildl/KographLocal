@@ -156,7 +156,7 @@ class DataProcessor:
         self.merged_df['hour'] = dt.dt.hour
         self.merged_df['minute'] = dt.dt.minute
 
-    def _create_sessions(self, gap_minutes=20):
+    def _create_sessions(self, gap_minutes=5):
         """
         Group individual page turns into reading sessions.
         A new session starts if the gap between page turns > gap_minutes.

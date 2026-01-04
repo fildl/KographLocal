@@ -145,6 +145,19 @@ def main():
         if fig:
             save_plot(fig, 'monthly_pattern.html', str(year))
 
+    # 11. Session Duration Analysis
+    print("\n[Session Duration]")
+    # All Time
+    fig_all = viz.plot_session_duration()
+    if fig_all:
+        save_plot(fig_all, 'session_duration.html', 'all_time')
+    
+    # Per Year
+    for year in years:
+        fig = viz.plot_session_duration(year=year)
+        if fig:
+            save_plot(fig, 'session_duration.html', str(year))
+
     print("\n--- Generation Complete ---")
 
 if __name__ == "__main__":

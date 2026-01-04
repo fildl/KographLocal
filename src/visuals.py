@@ -149,10 +149,10 @@ class Visualizer:
             df = df[df['year'] == target_year]
             title = f'Reading Calendar ({target_year})'
             year = target_year
-
+            
         if df.empty:
             return None
-
+            
         # Prepare subplots
         fig = make_subplots(
             rows=3, cols=4, 
@@ -161,12 +161,20 @@ class Visualizer:
             horizontal_spacing=0.03
         )
 
-        daily = df.groupby('date')['duration'].sum().reset_index()
+        daily = df.groupby('date').agg({
+            'duration': 'sum',
+            'title': lambda x: '<br>'.join(sorted(list(set(x)))[:5]) + ('...' if len(set(x)) > 5 else '')
+        }).reset_index()
+        
         daily['minutes'] = daily['duration'] / 60
         daily['date'] = pd.to_datetime(daily['date'])
+        daily['books_list'] = daily['title']
         
         # Max reading for color normalization
         max_reading = daily['minutes'].max() if not daily.empty else 1
+        
+        # Find global max day for highlighting
+        max_day_date = daily.loc[daily['minutes'].idxmax(), 'date'] if not daily.empty else None
 
         # Iterate through months
         for month in range(1, 13):
@@ -176,9 +184,9 @@ class Visualizer:
             # Generate full dates for this month
             _, num_days = calendar.monthrange(year, month)
             dates = pd.date_range(start=f"{year}-{month:02d}-01", end=f"{year}-{month:02d}-{num_days}")
-
+            
             month_df = pd.DataFrame({'date': dates})
-            month_df = month_df.merge(daily, on='date', how='left').fillna(0)
+            month_df = month_df.merge(daily[['date', 'minutes', 'books_list']], on='date', how='left').fillna({'minutes': 0, 'books_list': ''})
             
             # Coordinates
             month_df['day_of_week'] = month_df['date'].dt.dayofweek # 0=Mon
@@ -190,56 +198,93 @@ class Visualizer:
             
             # Formatting
             month_df['formatted_time'] = month_df.apply(
-                lambda x: f"{int(x['minutes'] // 60)}h {int(x['minutes'] % 60)}m", 
+                lambda x: f"{int(x['minutes'] // 60)}h {int(x['minutes'] % 60)}m" if x['minutes'] > 0 else "0m", 
                 axis=1
             )
             
             month_df['hover_text'] = month_df.apply(
-                lambda x: f"<b>{x['date'].strftime('%b %d')}</b><br>{x['formatted_time']}", 
+                lambda x: (
+                    f"<b>{x['date'].strftime('%b %d')}</b><br>{x['formatted_time']}<br><br><b>Books:</b><br>{x['books_list']}"
+                    if x['minutes'] > 0 else
+                    f"<b>{x['date'].strftime('%b %d')}</b><br>No Reading"
+                ), 
                 axis=1
             )
             
             # Show legend (colorbar) only on the last chart (Dec)
             show_scale = (month == 12)
             
-            # Outline logic: visible outline for non-zero data
-            month_df['line_color'] = month_df['minutes'].apply(
-                lambda x: self.THEME_COLORS['text'] if x > 0 else self.THEME_COLORS['background']
-            )
-            
+            # Split into Active (Reading) and Inactive (Empty)
+            active_df = month_df[month_df['minutes'] > 0].copy()
+            inactive_df = month_df[month_df['minutes'] == 0].copy()
+
+            # 1. Inactive Trace (No Hover)
             fig.add_trace(
                 go.Scatter(
-                    x=month_df['day_of_week'],
-                    y=5 - month_df['week_of_month'], 
+                    x=inactive_df['day_of_week'],
+                    y=5 - inactive_df['week_of_month'],
                     mode='markers',
                     marker=dict(
                         size=14,
-                        color=month_df['minutes'],
-                        colorscale=[
-                            [0, '#333333'], # Empty
-                            [0.01, '#2d3436'],
-                            [1, self.THEME_COLORS['primary']]
-                        ],
-                        cmin=0,
-                        cmax=max_reading,
-                        showscale=show_scale,
-                        colorbar=dict(
-                            title=dict(
-                                text="Reading Time (minutes)",
-                                side="right"
-                            ),
-                            thickness=15,
-                            len=0.7,
-                            y=0.5
-                        ) if show_scale else None,
-                        line=dict(width=1, color=month_df['line_color'])
+                        color='#333333', # Empty color
+                        line=dict(width=1, color=self.THEME_COLORS['background'])
                     ),
-                    text=month_df['hover_text'],
-                    hoverinfo='text',
+                    hoverinfo='skip',
                     showlegend=False
                 ),
                 row=row, col=col
             )
+
+            # 2. Active Trace (With Hover)
+            if not active_df.empty:
+                # Line styling logic: Highlight Max Day
+                # We need to compute line colors and widths row by row because Plotly expects arrays or scalar
+                # Or we can use apply
+                def get_line_style(row_date):
+                    if max_day_date and row_date == max_day_date:
+                        return self.THEME_COLORS['accent'], 2 # Accent color, thicker
+                    return self.THEME_COLORS['text'], 1 # Default, thin
+
+                lines = active_df['date'].apply(get_line_style)
+                active_df['line_color'] = lines.apply(lambda x: x[0])
+                active_df['line_width'] = lines.apply(lambda x: x[1])
+                
+                fig.add_trace(
+                    go.Scatter(
+                        x=active_df['day_of_week'],
+                        y=5 - active_df['week_of_month'], 
+                        mode='markers',
+                        marker=dict(
+                            size=14,
+                            color=active_df['minutes'],
+                            colorscale=[
+                                [0, '#333333'], # Should not happen for active
+                                [0.01, '#2d3436'],
+                                [1, self.THEME_COLORS['primary']]
+                            ],
+                            cmin=0,
+                            cmax=max_reading,
+                            showscale=show_scale,
+                            colorbar=dict(
+                                title=dict(
+                                    text="Reading Time (minutes)",
+                                    side="right"
+                                ),
+                                thickness=15,
+                                len=0.7,
+                                y=0.5
+                            ) if show_scale else None,
+                            line=dict(
+                                width=active_df['line_width'], 
+                                color=active_df['line_color']
+                            )
+                        ),
+                        text=active_df['hover_text'],
+                        hoverinfo='text',
+                        showlegend=False
+                    ),
+                    row=row, col=col
+                )
             
             # Clean up axes for this subplot
             fig.update_xaxes(
@@ -250,7 +295,7 @@ class Visualizer:
                 showgrid=False, zeroline=False, showticklabels=False, 
                 range=[-0.5, 6.5], row=row, col=col
             )
-
+            
         fig.update_layout(
             title=dict(text=title, x=0.5),
             paper_bgcolor=self.THEME_COLORS['paper'],
@@ -518,17 +563,22 @@ class Visualizer:
 
         if df.empty:
             return None
+        
+        # Pre-calc books per day for tooltip
+        daily_books = df.groupby('date').agg({
+            'title': lambda x: '<br>'.join(sorted(list(set(x)))[:5]) + ('...' if len(set(x)) > 5 else '')
+        }).reset_index()
+        daily_books['date'] = pd.to_datetime(daily_books['date'])
+        daily_books['books_list'] = daily_books['title']
 
-        # Calculate streaks for this year's data
-        # Note: If a streak started in prev year, this naive filter cuts it.
-        # Ideally we'd calc streaks on full data then filter map, but for now specific year calc is acceptable.
+        # Calculate streaks
         streak_map = self._calculate_daily_streaks_map(df)
         if not streak_map:
             return None
 
         max_streak = max(streak_map.values())
 
-        # Prepare subplots (same as reading calendar)
+        # Prepare subplots
         fig = make_subplots(
             rows=3, cols=4, 
             subplot_titles=[calendar.month_name[i] for i in range(1, 13)],
@@ -549,6 +599,9 @@ class Visualizer:
             # Map streak lengths
             month_df['streak'] = month_df['date'].map(streak_map).fillna(0).astype(int)
             
+            # Merge book info
+            month_df = month_df.merge(daily_books[['date', 'books_list']], on='date', how='left').fillna({'books_list': ''})
+            
             # Coordinates
             month_df['day_of_week'] = month_df['date'].dt.dayofweek
             
@@ -557,51 +610,75 @@ class Visualizer:
             month_df['week_of_month'] = (month_df['day_idx'] + first_day_weekday) // 7
             
             month_df['hover_text'] = month_df.apply(
-                lambda x: f"<b>{x['date'].strftime('%b %d')}</b><br>Streak: {x['streak']} days" if x['streak'] > 0 else f"<b>{x['date'].strftime('%b %d')}</b><br>No Streak", 
+                lambda x: (
+                    f"<b>{x['date'].strftime('%b %d')}</b><br>Streak: {x['streak']} days<br><br><b>Books:</b><br>{x['books_list']}"
+                    if x['streak'] > 0 else 
+                    f"<b>{x['date'].strftime('%b %d')}</b><br>No Streak"
+                ),
                 axis=1
             )
             
             # Show legend only on last
             show_scale = (month == 12)
             
-            # Line color
-            month_df['line_color'] = month_df['streak'].apply(
-                lambda x: self.THEME_COLORS['text'] if x > 0 else self.THEME_COLORS['background']
-            )
+            # Split into Active (Streak) and Inactive (No Streak)
+            active_df = month_df[month_df['streak'] > 0].copy()
+            inactive_df = month_df[month_df['streak'] == 0].copy()
 
+            # 1. Inactive Trace
             fig.add_trace(
                 go.Scatter(
-                    x=month_df['day_of_week'],
-                    y=5 - month_df['week_of_month'], 
+                    x=inactive_df['day_of_week'],
+                    y=5 - inactive_df['week_of_month'],
                     mode='markers',
                     marker=dict(
                         size=14,
-                        color=month_df['streak'],
-                        colorscale=[
-                            [0, '#333333'], 
-                            [0.01, self.THEME_COLORS['accent']], # Yellow start
-                            [1, self.THEME_COLORS['secondary']]  # Pink end
-                        ],
-                        cmin=0,
-                        cmax=max_streak,
-                        showscale=show_scale,
-                        colorbar=dict(
-                            title=dict(
-                                text="Streak Length (days)",
-                                side="right"
-                            ),
-                            thickness=15,
-                            len=0.7,
-                            y=0.5
-                        ) if show_scale else None,
-                        line=dict(width=1, color=month_df['line_color'])
+                        color='#333333',
+                        line=dict(width=1, color=self.THEME_COLORS['background'])
                     ),
-                    text=month_df['hover_text'],
-                    hoverinfo='text',
+                    hoverinfo='skip',
                     showlegend=False
                 ),
                 row=row, col=col
             )
+
+            # 2. Active Trace
+            if not active_df.empty:
+                active_df['line_color'] = self.THEME_COLORS['text']
+                
+                fig.add_trace(
+                    go.Scatter(
+                        x=active_df['day_of_week'],
+                        y=5 - active_df['week_of_month'], 
+                        mode='markers',
+                        marker=dict(
+                            size=14,
+                            color=active_df['streak'],
+                            colorscale=[
+                                [0, '#333333'], 
+                                [0.01, self.THEME_COLORS['accent']], # Yellow start
+                                [1, self.THEME_COLORS['secondary']]  # Pink end
+                            ],
+                            cmin=0,
+                            cmax=max_streak,
+                            showscale=show_scale,
+                            colorbar=dict(
+                                title=dict(
+                                    text="Streak Length (days)",
+                                    side="right"
+                                ),
+                                thickness=15,
+                                len=0.7,
+                                y=0.5
+                            ) if show_scale else None,
+                            line=dict(width=1, color=active_df['line_color'])
+                        ),
+                        text=active_df['hover_text'],
+                        hoverinfo='text',
+                        showlegend=False
+                    ),
+                    row=row, col=col
+                )
             
             fig.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, range=[-0.5, 6.5], row=row, col=col)
             fig.update_yaxes(showgrid=False, zeroline=False, showticklabels=False, range=[-0.5, 6.5], row=row, col=col)
@@ -723,7 +800,9 @@ class Visualizer:
         # Create Spans Data (Background)
         # One row per book representing the full duration (Start to Finish)
         spans_df = segments_df[['Title', 'GlobalStart', 'GlobalFinish', 'Format']].drop_duplicates()
-        spans_df = spans_df.rename(columns={'GlobalStart': 'Start', 'GlobalFinish': 'Finish'})
+        
+        # Create VisualFinish for plotting (Finish + 1 day to cover the last day)
+        spans_df['VisualFinish'] = spans_df['GlobalFinish'] + pd.Timedelta(days=1)
         
         # Assign colors
         unique_books = segments_df['Title'].unique()
@@ -732,11 +811,11 @@ class Visualizer:
             color_map[book_title] = self.BOOK_COLORS[i % len(self.BOOK_COLORS)]
         
         # 1. Plot Background Spans (Opacity 0.3, Interactive)
-        # This layer handles the tooltip and provides visual continuity
+        # This layer handles the tooltip and covers the Full Duration (Start to VisualFinish)
         fig = px.timeline(
             spans_df, 
-            x_start="Start", 
-            x_end="Finish", 
+            x_start="GlobalStart", 
+            x_end="VisualFinish", 
             y="Title",
             color="Title",
             color_discrete_map=color_map,
@@ -744,7 +823,7 @@ class Visualizer:
             title=title,
             pattern_shape="Format",
             pattern_shape_map={'kindle': '', 'paperback': '/'},
-            custom_data=['Start', 'Finish'] # Used for tooltip
+            custom_data=['GlobalStart', 'GlobalFinish'] # Explicit columns for tooltip
         )
         
         # 2. Plot Reading Segments (Opacity 1.0, Non-Interactive)
@@ -768,25 +847,20 @@ class Visualizer:
         fig.add_traces(fig_reading.data)
         
         # Calculate Annotations (Smart Text Placement per Book)
-        # We use spans_df directly since it represents the Book Envelope
         annotations = []
-        
-        # Heuristic for char width in "days" units. 
-        # With pixels_per_day = 4, and approx 10px per char:
         char_days_width = 2.5 
         
-        # Iterate over spans (one per book)
         for _, row in spans_df.iterrows():
             title_text = row['Title']
-            start = row['Start']
-            end = row['Finish']
+            start = row['GlobalStart']
+            end = row['VisualFinish'] # Use VisualFinish for placement logic
             duration = (end - start).days
             
             text_len_days = len(title_text) * char_days_width
             
             # Decide position
             # 1. Inside
-            if duration > (text_len_days + total_days_span * 0.02): # Fits with padding?
+            if duration > (text_len_days + total_days_span * 0.02): 
                 x_pos = start + (end - start) / 2
                 x_anchor = 'center'
                 text_color = 'white' 
@@ -795,7 +869,7 @@ class Visualizer:
                 # 2. Try Right
                 space_right = (max_date - end).days
                 if space_right > (text_len_days + total_days_span * 0.02):
-                    x_pos = end + pd.Timedelta(days=total_days_span * 0.01) # Small padding
+                    x_pos = end + pd.Timedelta(days=total_days_span * 0.01) 
                     x_anchor = 'left'
                     text_color = self.THEME_COLORS['text']
                     show_arrow = False
@@ -808,7 +882,7 @@ class Visualizer:
             
             annotations.append(dict(
                 x=x_pos,
-                y=title_text, # Y is the category name
+                y=title_text, 
                 text=title_text,
                 showarrow=show_arrow,
                 xanchor=x_anchor,
@@ -823,9 +897,9 @@ class Visualizer:
             font_color=self.THEME_COLORS['text'],
             width=self.PLOT_WIDTH + 200, 
             height=max(500, len(unique_books) * 35 + 100),
-            margin=dict(t=80, l=50, r=50, b=50), # Reduced left margin since labels are on plot
+            margin=dict(t=80, l=50, r=50, b=50), 
             title_x=0.5,
-            showlegend=False, # Hide legend as colors correspond to bars which have labels
+            showlegend=False, 
             xaxis=dict(
                 gridcolor=self.THEME_COLORS['grid'],
                 title=None
@@ -833,7 +907,7 @@ class Visualizer:
             yaxis=dict(
                 gridcolor=self.THEME_COLORS['grid'],
                 title=None,
-                showticklabels=False, # Hide axis labels
+                showticklabels=False, 
                 automargin=True
             ),
             annotations=annotations
@@ -841,10 +915,17 @@ class Visualizer:
         
         # Order
         fig.update_yaxes(categoryorder='array', categoryarray=unique_books[::-1])
+        
+        # Use Year in axis format for All Time view
+        axis_format = "%b %Y" if not year else "%b"
+        fig.update_xaxes(tickformat=axis_format)
 
+        # Update Tooltip
+        # customdata[0] is GlobalStart, customdata[1] is GlobalFinish
         fig.update_traces(
             marker_line_width=0,
-            hovertemplate="<b>%{y}</b><br>Start: %{customdata[0]|%b %d}<br>End: %{customdata[1]|%b %d}<extra></extra>"
+            hovertemplate="<b>%{y}</b><br>Start: %{customdata[0]|%b %d, %Y}<br>End: %{customdata[1]|%b %d, %Y}<extra></extra>",
+            hoverlabel=dict(bgcolor="black")
         )
         
         # Custom Legend for Format
@@ -960,7 +1041,8 @@ class Visualizer:
         fig.update_traces(
             marker_color=self.THEME_COLORS['primary'],
             marker_line_width=0,
-            hovertemplate="<b>%{x}</b><br>Avg: %{y:.1f} min<extra></extra>"
+            hovertemplate="<br><b>Day</b>: %{x}<br><b>Avg</b>: %{y:.1f} min<extra></extra>",
+            hoverlabel=dict(bgcolor="black")
         )
         
         return fig
@@ -994,13 +1076,13 @@ class Visualizer:
             monthly_stats['value'] = monthly_stats['duration'] / 3600
             monthly_stats['books_list'] = monthly_stats['title']
             
-            tooltip_template = "<b>%{x}</b><br>Total: %{y:.1f} hrs<br><br><b>Books:</b><br>%{customdata[0]}<extra></extra>"
+            tooltip_template = "<br><b>Month</b>: %{x}<br><b>Total</b>: %{y:.1f} hrs<br><br><b>Books:</b><br>%{customdata[0]}<extra></extra>"
             custom_data_cols = ['books_list']
         else:
             # All Time: Average Hours per Month
             title = 'Average Monthly Reading Pattern (All Time)'
             y_label = 'Average Hours'
-            tooltip_template = "<b>%{x}</b><br>Avg: %{y:.1f} hrs<extra></extra>"
+            tooltip_template = "<br><b>Month</b>: %{x}<br><b>Avg</b>: %{y:.1f} hrs<extra></extra>"
             custom_data_cols = []
             
             # 1. Calculate Monthly Totals for each Year-Month pair
@@ -1046,7 +1128,107 @@ class Visualizer:
         fig.update_traces(
             marker_color=self.THEME_COLORS['accent'], 
             marker_line_width=0,
-            hovertemplate=tooltip_template
+            hovertemplate=tooltip_template,
+            hoverlabel=dict(bgcolor="black")
+        )
+        
+        return fig
+
+    def plot_session_duration(self, year: int = None):
+        """
+        Analysis of Reading Sessions (Avg Duration).
+        Layout:
+        - Subplot 1: Avg Session Duration by Day of Week.
+        - Subplot 2: Avg Session Duration by Month.
+        """
+        df = self.data.copy()
+        if year:
+            df = df[df['year'] == year]
+            title = f'Session Analysis ({year})'
+        else:
+            title = 'Session Analysis (All Time)'
+
+        if df.empty or 'session_id' not in df.columns:
+            return None
+            
+        # 1. Aggregate into Sessions
+        # usage events -> single session row
+        sessions = df.groupby('session_id').agg({
+            'duration': 'sum',
+            'start_datetime': 'min' # Use start of session for classification
+        }).reset_index()
+        
+        sessions['minutes'] = sessions['duration'] / 60
+        sessions['day_of_week'] = sessions['start_datetime'].dt.dayofweek
+        sessions['month'] = sessions['start_datetime'].dt.month
+        
+        # 2. Avg by Weekday
+        weekday_stats = sessions.groupby('day_of_week')['minutes'].agg(['mean', 'count']).reset_index()
+        days_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
+        weekday_stats['Day'] = weekday_stats['day_of_week'].map(days_map)
+        
+        # 3. Avg by Month
+        month_stats = sessions.groupby('month')['minutes'].agg(['mean', 'count']).reset_index()
+        import calendar
+        month_stats['Month'] = month_stats['month'].apply(lambda x: calendar.month_abbr[x])
+        
+        # Prepare Subplots
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=("Avg Session by Weekday", "Avg Session by Month"),
+            horizontal_spacing=0.1
+        )
+        
+        # Trace 1: Weekday
+        fig.add_trace(
+            go.Bar(
+                x=weekday_stats['Day'],
+                y=weekday_stats['mean'],
+                name="Weekday",
+                marker_color=self.THEME_COLORS['primary'],
+                hovertemplate="<b>%{x}</b><br>Avg: %{y:.1f} min<br>Sessions: %{customdata}<extra></extra>",
+                customdata=weekday_stats['count']
+            ),
+            row=1, col=1
+        )
+        
+        # Trace 2: Month
+        fig.add_trace(
+            go.Bar(
+                x=month_stats['Month'],
+                y=month_stats['mean'],
+                name="Month",
+                marker_color=self.THEME_COLORS['accent'],
+                hovertemplate="<b>%{x}</b><br>Avg: %{y:.1f} min<br>Sessions: %{customdata}<extra></extra>",
+                customdata=month_stats['count']
+            ),
+            row=1, col=2
+        )
+        
+        # Styling
+        fig.update_layout(
+            title=dict(text=title, x=0.5),
+            paper_bgcolor=self.THEME_COLORS['paper'],
+            plot_bgcolor=self.THEME_COLORS['background'],
+            font_color=self.THEME_COLORS['text'],
+            width=self.PLOT_WIDTH,
+            height=self.PLOT_HEIGHT,
+            margin=dict(t=80, l=50, r=50, b=50),
+            showlegend=False,
+            yaxis=dict(title='Avg Duration (min)', gridcolor=self.THEME_COLORS['grid']),
+            yaxis2=dict(title='Avg Duration (min)', gridcolor=self.THEME_COLORS['grid'])
+        )
+        
+        # Sort Month Axis
+        fig.update_xaxes(
+            categoryorder='array', 
+            categoryarray=[calendar.month_abbr[i] for i in range(1, 13)],
+            row=1, col=2
+        )
+        
+        fig.update_traces(
+            marker_line_width=0,
+            hoverlabel=dict(bgcolor="black")
         )
         
         return fig
