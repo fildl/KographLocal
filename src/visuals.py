@@ -74,9 +74,8 @@ class Visualizer:
         # Filter by year if specified
         if year:
             df = df[df['year'] == year]
-            title = f'Weekly Reading Activity ({year})'
-        else:
-            title = 'Weekly Reading Activity (All Time)'
+        
+        title = 'Weekly Reading Activity'
 
         if df.empty:
             print(f"Warning: No data found for year {year}")
@@ -164,16 +163,12 @@ class Visualizer:
         
         if year:
             df = df[df['year'] == year]
-            title = f'Reading Calendar ({year})'
         else:
-            # If all time, default to latest year or warn?
-            # User wants visual consistent with PC.
-            # Let's default to max year if no year specified for this specific plot type, 
-            # because 3x4 grid is inherently yearly.
             target_year = df['year'].max()
             df = df[df['year'] == target_year]
-            title = f'Reading Calendar ({target_year})'
             year = target_year
+
+        title = 'Reading Calendar'
         
         # Exclude Paperback data (synthetic daily sessions don't reflect actual habits)
         if 'format' in df.columns:
@@ -346,20 +341,25 @@ class Visualizer:
         
         if year:
             df = df[df['year'] == year]
-            title = f'Time of Day Distribution ({year})'
-        else:
-            title = 'Time of Day Distribution (All Time)'
+        
+        title = 'Time of Day Distribution'
 
         if df.empty:
             return None
 
-        # Group by hour
-        hourly = df.groupby('hour')['duration'].sum().reindex(range(24), fill_value=0).reset_index()
+        # Exclude Paperback
+        if 'format' in df.columns:
+            df = df[df['format'] != 'paperback']
+
+        # Group by hour AND format
+        # We need to ensure we have all hours for all present formats?
+        # Actually px.bar handles missing categories often, but let's aggregate first.
+        hourly = df.groupby(['hour', 'format'])['duration'].sum().reset_index()
         
-        # Calculate Percentage
-        total_duration = df['duration'].sum()
+        # Calculate Percentage (relative to Total Duration of displayed formats)
+        total_duration = hourly['duration'].sum()
         hourly['percentage'] = (hourly['duration'] / total_duration * 100) if total_duration > 0 else 0
-        hourly['hours'] = hourly['duration'] / 3600 # Keep for tooltip
+        hourly['hours'] = hourly['duration'] / 3600
         
         # Formatting for tooltip
         hourly['formatted_time'] = hourly.apply(
@@ -367,13 +367,16 @@ class Visualizer:
             axis=1
         )
         
-        # Create plot
+        # Create Stacked Bar Plot
         fig = px.bar(
             hourly, 
             x='hour', 
             y='percentage',
+            color='format',
             title=title,
-            custom_data=['formatted_time', 'percentage']
+            labels={'percentage': 'Percentage (%)', 'hour': 'Hour of Day', 'format': 'Format'},
+            custom_data=['formatted_time', 'percentage', 'format'],
+            color_discrete_map=self.FORMAT_COLORS
         )
         
         # Styling
@@ -381,9 +384,18 @@ class Visualizer:
             paper_bgcolor=self.THEME_COLORS['paper'],
             plot_bgcolor=self.THEME_COLORS['background'],
             font_color=self.THEME_COLORS['text'],
-            showlegend=False,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
             title_x=0.5,
-            hovermode="x",
+            title_xanchor='center',
+            title_y=0.95,
+            hovermode="x", # Shows all stacks for that hour
             width=self.PLOT_WIDTH,
             height=self.PLOT_HEIGHT,
             margin=dict(t=80, l=50, r=50, b=50),
@@ -405,9 +417,8 @@ class Visualizer:
         )
         
         fig.update_traces(
-            marker_color=self.THEME_COLORS['primary'],
             marker_line_width=0,
-            hovertemplate="<br><b>%{x}:00</b><br><b>Share</b>: %{y:.1f}%<br><b>Time</b>: %{customdata[0]}<extra></extra>",
+            hovertemplate="<br><b>Format:</b> %{customdata[2]}<br><b>Share</b>: %{y:.1f}%<br><b>Time</b>: %{customdata[0]}<extra></extra>",
             hoverlabel=dict(bgcolor="black")
         )
         
@@ -450,9 +461,8 @@ class Visualizer:
         df = self.data.copy()
         if year:
             df = df[df['year'] == year]
-            title = f'Reading Streaks ({year})'
-        else:
-            title = 'Reading Streaks (All Time)'
+        
+        title = 'Reading Streaks'
 
         streaks = self._calculate_streaks(df)
         
@@ -584,12 +594,12 @@ class Visualizer:
         
         if year:
             df = df[df['year'] == year]
-            title = f'Streak Calendar ({year})'
         else:
             target_year = df['year'].max()
             df = df[df['year'] == target_year]
-            title = f'Streak Calendar ({target_year})'
             year = target_year
+            
+        title = 'Streak Calendar'
 
         if df.empty:
             return None
@@ -803,9 +813,8 @@ class Visualizer:
         
         if year:
             df = df[df['year'] == year]
-            title = f'Book Timeline ({year})'
-        else:
-            title = 'Book Timeline (All Time)'
+
+        title = 'Reading Timeline'
 
         if df.empty:
             return None

@@ -148,51 +148,10 @@ col4.metric("Longest Streak", f"{longest_streak} days")
 
 st.markdown("---")
 
-# --- 1. Weekly Activity ---
-st.subheader("Weekly Activity")
 # Determine year for plot function (int or None)
 plot_year = int(selected_year) if selected_year != "All Time" else None
 
-fig_weekly = viz.plot_weekly_activity() # Visualizer already has filtered data? 
-# Wait, Visualizer was re-inited with `filtered_df`. 
-# If `filtered_df` is ALREADY filtered by year, we should pass year=None to functions 
-# OR rely on the fact that `filtered_df` contains only that year's data.
-# The `plot_weekly_activity` method has a `year` argument that does its own filtering.
-# If we pass `year=None`, it uses all data in `self.data`.
-# Since `self.data` is now `filtered_df`, `year=None` is correct and safer.
-# HOWEVER, some charts like the Calendar Grid rely on knowing the specific year to draw the grid.
-# If `self.data` is filtered, we still might need to tell the plot function "this is 2024" for titles/structure.
-# Let's pass `year=plot_year` if it's set, otherwise None.
-# But if `filtered_df` is already filtered, `plot_weekly_activity(year=2024)` might try to filter again.
-# Let's check `visuals.py` implementation quickly. It does: `df = df[df['year'] == year]`
-# If `df` is already filtered, this is redundant but harmless.
-try:
-    fig_weekly = viz.plot_weekly_activity(year=plot_year)
-    if fig_weekly:
-        st.plotly_chart(fig_weekly, use_container_width=True)
-    else:
-        st.info("No data available for this period.")
-except Exception as e:
-    st.error(f"Could not render Weekly Activity: {e}")
-
-# --- 2. Reading Calendar ---
-st.subheader("Reading Calendar")
-if selected_year == "All Time":
-    st.info("Please select a specific Year in the sidebar to view the Reading Calendar grid.")
-else:
-    try:
-        # The calendar plot NEEDS a year to render the grid properly.
-        # If "All Time" is selected, it defaults to the latest year in the code.
-        # We should probably show the latest year if All Time is selected, or handle it gracefully.
-        fig_calendar = viz.plot_reading_calendar(year=plot_year)
-        if fig_calendar:
-            st.plotly_chart(fig_calendar, use_container_width=True)
-        else:
-            st.info("No data available.")
-    except Exception as e:
-        st.error(f"Could not render Reading Calendar: {e}")
-
-# --- 3. Book Timeline (The Complex One) ---
+# --- 1. Book Timeline ---
 st.subheader("Book Timeline")
 try:
     fig_timeline_plot = viz_timeline.plot_book_timeline(year=plot_year)
@@ -202,4 +161,40 @@ try:
          st.info("No timeline data available.")
 except Exception as e:
     st.error(f"Could not render Timeline: {e}")
+
+# --- 2. Weekly Activity ---
+st.subheader("Weekly Activity")
+try:
+    fig_weekly = viz.plot_weekly_activity(year=plot_year)
+    if fig_weekly:
+        st.plotly_chart(fig_weekly, use_container_width=True)
+    else:
+        st.info("No data available for this period.")
+except Exception as e:
+    st.error(f"Could not render Weekly Activity: {e}")
+
+# --- 3. Reading Calendar ---
+st.subheader("Reading Calendar")
+if selected_year == "All Time":
+    st.info("Please select a specific Year in the sidebar to view the Reading Calendar grid.")
+else:
+    try:
+        fig_calendar = viz.plot_reading_calendar(year=plot_year)
+        if fig_calendar:
+            st.plotly_chart(fig_calendar, use_container_width=True)
+        else:
+            st.info("No data available.")
+    except Exception as e:
+        st.error(f"Could not render Reading Calendar: {e}")
+
+# --- 4. Time of Day Distribution ---
+st.subheader("Time of Day Distribution")
+try:
+    fig_hourly = viz.plot_time_of_day(year=plot_year)
+    if fig_hourly:
+        st.plotly_chart(fig_hourly, use_container_width=True)
+    else:
+         st.info("No data available.")
+except Exception as e:
+    st.error(f"Could not render Time of Day: {e}")
 
