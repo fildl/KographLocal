@@ -463,6 +463,10 @@ class Visualizer:
             df = df[df['year'] == year]
         
         title = 'Reading Streaks'
+        
+        # Exclude Paperback data
+        if 'format' in df.columns:
+            df = df[df['format'] != 'paperback']
 
         streaks = self._calculate_streaks(df)
         
@@ -602,6 +606,10 @@ class Visualizer:
             year = target_year
             
         title = 'Streak Calendar'
+
+        # Exclude Paperback data
+        if 'format' in df.columns:
+            df = df[df['format'] != 'paperback']
 
         if df.empty:
             return None
