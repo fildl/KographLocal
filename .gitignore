@@ -11,5 +11,5 @@ venv/
 
 # Project specific
 data/statistics.sqlite3
-old_scripts/data/
+data/
 output/
