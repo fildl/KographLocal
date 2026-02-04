@@ -42,7 +42,7 @@ class DataProcessor:
             self.merged_df['language'] = self.merged_df['language'].str.split('-').str[0]
             
         # Add format column
-        self.merged_df['format'] = 'kindle'
+        self.merged_df['format'] = 'ebook'
         
         # Add pages_read column (1 row = 1 page read event)
         self.merged_df['pages_read'] = 1
@@ -124,7 +124,7 @@ class DataProcessor:
                             'authors': row['authors'],
                             'pages': row['pages'],
                             'language': row['language'] if 'language' in row else 'en',
-                            'format': 'paper',
+                            'format': 'paperback',
                             # Add enriched columns manually or re-enrich?
                             # Re-enriching is safer usually, or just add what we strictly need for visuals
                             'date': session_time.date(),
@@ -152,6 +152,86 @@ class DataProcessor:
         except Exception as e:
             print(f"Failed to load paper books from {csv_path}: {e}")
             return combined_df
+
+    def get_data_with_audio_books(self, csv_path, current_combined_df=None):
+        """
+        Parse audio books CSV and merge into the dataset.
+        Format expectation: title, authors, total_duration, date, end_time, progress
+        'progress' is interpreted as session duration (H:MM).
+        """
+        target_df = current_combined_df if current_combined_df is not None else self.merged_df.copy()
+        
+        try:
+            audio_df = pd.read_csv(csv_path, skipinitialspace=True)
+            audio_df.columns = audio_df.columns.str.strip()
+            
+            new_rows = []
+            
+            for idx, row in audio_df.iterrows():
+                try:
+                    # Parse Date
+                    date_str = str(row['date']).strip()
+                    end_time_str = str(row['end_time']).strip()
+                    duration_str = str(row['progress']).strip() # "0:22" -> 22 mins
+                    
+                    # Parse Duration (H:MM)
+                    try:
+                        h, m = map(int, duration_str.split(':'))
+                        duration_seconds = h * 3600 + m * 60
+                    except ValueError:
+                        # Fallback for M:SS if needed, assuming H:MM based on "0:22" = 22 mins
+                        # If split gives 3 parts H:MM:SS handle that too
+                        parts = list(map(int, duration_str.split(':')))
+                        if len(parts) == 3:
+                            duration_seconds = parts[0]*3600 + parts[1]*60 + parts[2]
+                        elif len(parts) == 2:
+                            duration_seconds = parts[0]*3600 + parts[1]*60
+                        else:
+                            duration_seconds = 0
+                            
+                    if duration_seconds <= 0: continue
+                    
+                    # Parse End Time to calculate Start Time
+                    # Combined string: "2026-02-02 13:29"
+                    end_dt = pd.to_datetime(f"{date_str} {end_time_str}")
+                    start_dt = end_dt - pd.Timedelta(seconds=duration_seconds)
+                    
+                    # Generate Pseudo ID
+                    pseudo_id = -(abs(hash(row['title'] + "audio")) % 1000000) - 2000000 # Offset from paper books
+                    
+                    new_rows.append({
+                        'id_book': pseudo_id,
+                        'duration': duration_seconds,
+                        'pages_read': 0, # Audio doesn't track pages
+                        'start_datetime': start_dt,
+                        'title': row['title'],
+                        'authors': row['authors'],
+                        'pages': 0, # Could try to estimate from total_duration?
+                        'language': 'en', # Default or parse if available
+                        'format': 'audiobook',
+                        'date': start_dt.date(),
+                        'year': start_dt.year,
+                        'month': start_dt.month,
+                        'day_of_week': start_dt.dayofweek,
+                        'hour': start_dt.hour,
+                        'minute': start_dt.minute
+                    })
+
+                except Exception as e:
+                    print(f"Error processing audiobook row {idx}: {e}")
+                    continue
+            
+            if new_rows:
+                new_df = pd.DataFrame(new_rows)
+                target_df = pd.concat([target_df, new_df], ignore_index=True)
+                target_df.sort_values('start_datetime', inplace=True)
+                print(f"Added {len(new_df)} audiobook sessions.")
+                
+            return target_df
+
+        except Exception as e:
+            print(f"Failed to load audiobooks from {csv_path}: {e}")
+            return target_df
 
     def _enrich_data(self):
         """Add time-based features."""

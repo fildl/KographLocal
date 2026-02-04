@@ -105,7 +105,9 @@ class Visualizer:
             plot_bgcolor=self.THEME_COLORS['background'],
             font_color=self.THEME_COLORS['text'],
             showlegend=False,
-            title_x=0.5,  # Center title
+            title_x=0.5,
+            title_xanchor='center',
+            title_y=0.95,
             hovermode="x", # Simple x hover
             width=self.PLOT_WIDTH,
             height=self.PLOT_HEIGHT,
@@ -823,7 +825,7 @@ class Visualizer:
             opacity=0.3,
             title=title,
             pattern_shape="Format",
-            pattern_shape_map={'kindle': '', 'paperback': '/'},
+            pattern_shape_map={'ebook': '', 'paperback': '/', 'audiobook': '.'},
             custom_data=['GlobalStart', 'GlobalFinish'] # Explicit columns for tooltip
         )
         
@@ -838,7 +840,7 @@ class Visualizer:
             color_discrete_map=color_map,
             opacity=1.0,
             pattern_shape="Format",
-            pattern_shape_map={'kindle': '', 'paperback': '/'}
+            pattern_shape_map={'ebook': '', 'paperback': '/', 'audiobook': '.'}
         )
         
         # Set top layer to ignore hover, allowing fall-through to background
