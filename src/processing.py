@@ -94,8 +94,8 @@ class DataProcessor:
                     pages = float(row['pages']) if pd.notna(row['pages']) else 0
                     if pages <= 0: continue
                     
-                    # Estimate total duration: 2 minutes per page
-                    total_seconds = pages * 2 * 60
+                    # Estimate total duration: 1 minute per page (60 seconds)
+                    total_seconds = pages * 60
                     
                     # Date range
                     date_range = pd.date_range(start=start_date, end=end_date, freq='D')
@@ -165,56 +165,71 @@ class DataProcessor:
             audio_df = pd.read_csv(csv_path, skipinitialspace=True)
             audio_df.columns = audio_df.columns.str.strip()
             
+            # Helper to parse duration string "H:MM" or "M:SS" to seconds
+            def parse_duration(dur_str):
+                try:
+                    dur_str = str(dur_str).strip()
+                    parts = list(map(int, dur_str.split(':')))
+                    if len(parts) == 3: # H:MM:SS
+                        return parts[0]*3600 + parts[1]*60 + parts[2]
+                    elif len(parts) == 2: # H:MM usually, but could be M:SS? 
+                        # User example "0:22" for 22 mins implies H:MM format.
+                        return parts[0]*3600 + parts[1]*60
+                    return 0
+                except:
+                    return 0
+
+            # Pre-process numeric data
+            audio_df['progress_seconds'] = audio_df['progress'].apply(parse_duration)
+            
+            # Construct full datetime for sorting
+            # Combine date and end_time
+            audio_df['end_dt'] = pd.to_datetime(audio_df['date'].astype(str) + ' ' + audio_df['end_time'].astype(str))
+            
+            # Sort by title and time to ensure correct diffing
+            audio_df.sort_values(by=['title', 'end_dt'], inplace=True)
+            
+            # Calculate session duration (diff of cumulative progress)
+            # Group by title to track progress per book
+            audio_df['prev_progress'] = audio_df.groupby('title')['progress_seconds'].shift(1).fillna(0)
+            
+            # Calculate duration
+            audio_df['duration_seconds'] = audio_df['progress_seconds'] - audio_df['prev_progress']
+            
+            # Handle cases where progress might reset (negative duration -> treat as new start/session from 0)
+            # If duration < 0, it means we jumped back or restarted. 
+            # In that case, the session duration is just the current progress (read from 0 to X).
+            audio_df.loc[audio_df['duration_seconds'] < 0, 'duration_seconds'] = audio_df['progress_seconds']
+            
+            # Calculate start_dt
+            audio_df['start_dt'] = audio_df['end_dt'] - pd.to_timedelta(audio_df['duration_seconds'], unit='s')
+            
             new_rows = []
             
             for idx, row in audio_df.iterrows():
                 try:
-                    # Parse Date
-                    date_str = str(row['date']).strip()
-                    end_time_str = str(row['end_time']).strip()
-                    duration_str = str(row['progress']).strip() # "0:22" -> 22 mins
-                    
-                    # Parse Duration (H:MM)
-                    try:
-                        h, m = map(int, duration_str.split(':'))
-                        duration_seconds = h * 3600 + m * 60
-                    except ValueError:
-                        # Fallback for M:SS if needed, assuming H:MM based on "0:22" = 22 mins
-                        # If split gives 3 parts H:MM:SS handle that too
-                        parts = list(map(int, duration_str.split(':')))
-                        if len(parts) == 3:
-                            duration_seconds = parts[0]*3600 + parts[1]*60 + parts[2]
-                        elif len(parts) == 2:
-                            duration_seconds = parts[0]*3600 + parts[1]*60
-                        else:
-                            duration_seconds = 0
-                            
+                    duration_seconds = row['duration_seconds']
                     if duration_seconds <= 0: continue
                     
-                    # Parse End Time to calculate Start Time
-                    # Combined string: "2026-02-02 13:29"
-                    end_dt = pd.to_datetime(f"{date_str} {end_time_str}")
-                    start_dt = end_dt - pd.Timedelta(seconds=duration_seconds)
-                    
                     # Generate Pseudo ID
-                    pseudo_id = -(abs(hash(row['title'] + "audio")) % 1000000) - 2000000 # Offset from paper books
+                    pseudo_id = -(abs(hash(row['title'] + "audio")) % 1000000) - 2000000 
                     
                     new_rows.append({
                         'id_book': pseudo_id,
                         'duration': duration_seconds,
-                        'pages_read': 0, # Audio doesn't track pages
-                        'start_datetime': start_dt,
+                        'pages_read': 0, 
+                        'start_datetime': row['start_dt'],
                         'title': row['title'],
                         'authors': row['authors'],
-                        'pages': 0, # Could try to estimate from total_duration?
-                        'language': 'en', # Default or parse if available
+                        'pages': 0, 
+                        'language': 'en',
                         'format': 'audiobook',
-                        'date': start_dt.date(),
-                        'year': start_dt.year,
-                        'month': start_dt.month,
-                        'day_of_week': start_dt.dayofweek,
-                        'hour': start_dt.hour,
-                        'minute': start_dt.minute
+                        'date': row['start_dt'].date(),
+                        'year': row['start_dt'].year,
+                        'month': row['start_dt'].month,
+                        'day_of_week': row['start_dt'].dayofweek,
+                        'hour': row['start_dt'].hour,
+                        'minute': row['start_dt'].minute
                     })
 
                 except Exception as e:

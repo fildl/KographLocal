@@ -106,7 +106,8 @@ if selected_formats:
         filtered_combined = filtered_combined[filtered_combined['format'].isin(fmt_filter)]
 
 # Re-Initialize Visualizers with Filtered Data
-viz = Visualizer(filtered_df)
+# Use combined data for main visualizer too, so all charts get all formats
+viz = Visualizer(filtered_combined)
 viz_timeline = Visualizer(filtered_combined)
 
 # --- Main Dashboard ---
@@ -129,14 +130,14 @@ st.markdown(f"Displaying data for: {filter_status}")
 # --- Metrics Row ---
 col1, col2, col3, col4 = st.columns(4)
 
-total_hours = filtered_df['duration'].sum() / 3600
-books_read = filtered_df['id_book'].nunique()
+total_hours = filtered_combined['duration'].sum() / 3600
+books_read = filtered_combined['id_book'].nunique()
 # Estimate pages (simple heuristic or from data if available, falling back to books)
 # For now, let's show sessions count
-total_sessions = len(filtered_df)
+total_sessions = len(filtered_combined)
 
 # Longest streak calculation
-streaks = viz._calculate_streaks(filtered_df)
+streaks = viz._calculate_streaks(filtered_combined)
 longest_streak = max(streaks) if streaks else 0
 current_streak = streaks[-1] if streaks else 0
 

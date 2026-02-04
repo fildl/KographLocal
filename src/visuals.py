@@ -22,6 +22,15 @@ class Visualizer:
         'subtext': '#aaaaaa',
         'gradient': ['#00d2d3', '#54a0ff', '#5f27cd']
     }
+
+    # Format Colors
+    FORMAT_COLORS = {
+        'ebook': '#00d2d3',    # Cyan
+        'paperback': '#feca57', # Yellow
+        'audiobook': '#ff9ff3', # Pink
+        'kindle': '#00d2d3',   # Fallback
+        'paper': '#feca57'     # Fallback
+    }
     
     # Standard Plot Dimensions
     PLOT_WIDTH = 1200
@@ -56,7 +65,7 @@ class Visualizer:
 
     def plot_weekly_activity(self, year: int = None):
         """
-        Bar chart of total reading hours per week.
+        Stacked Bar chart of total reading hours per week, split by format.
         Args:
             year (int, optional): Filter data for a specific year.
         """
@@ -73,10 +82,15 @@ class Visualizer:
             print(f"Warning: No data found for year {year}")
             return None
 
-        df['week'] = df['start_datetime'].dt.to_period('W').dt.start_time
+        # Ensure week column exists
+        if 'start_datetime' in df.columns:
+            df['week'] = df['start_datetime'].dt.to_period('W').dt.start_time
+        elif 'date' in df.columns:
+            df['start_datetime'] = pd.to_datetime(df['date'])
+            df['week'] = df['start_datetime'].dt.to_period('W').dt.start_time
         
-        # Aggregate duration and book titles per week
-        aggregated = df.groupby('week').agg({
+        # Aggregate duration and book titles per week and format
+        aggregated = df.groupby(['week', 'format']).agg({
             'duration': 'sum',
             'title': lambda x: '<br>'.join(sorted(list(set(x)))[:5]) + ('...' if len(set(x)) > 5 else '')
         }).reset_index()
@@ -89,14 +103,16 @@ class Visualizer:
             axis=1
         )
         
-        # Create plot
+        # Create Stacked Bar Plot
         fig = px.bar(
             aggregated, 
             x='week', 
             y='hours',
+            color='format', # Stack by format
             title=title,
-            labels={'hours': 'Hours Read', 'week': 'Week'},
-            custom_data=['formatted_time', 'books_list'] # Pass formatted string and book list
+            labels={'hours': 'Hours Read', 'week': 'Week', 'format': 'Format'},
+            custom_data=['formatted_time', 'books_list', 'format'],
+            color_discrete_map=self.FORMAT_COLORS # Apply explicit colors
         )
         
         # Styling
@@ -104,11 +120,19 @@ class Visualizer:
             paper_bgcolor=self.THEME_COLORS['paper'],
             plot_bgcolor=self.THEME_COLORS['background'],
             font_color=self.THEME_COLORS['text'],
-            showlegend=False,
+            showlegend=True, # Show legend for formats
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
             title_x=0.5,
             title_xanchor='center',
             title_y=0.95,
-            hovermode="x", # Simple x hover
+            hovermode="x", # Unified hover might be better for stacked bars? Or sticking to x
+            # For stacked bars, "hovermode='x'" shows all stack items at that x.
             width=self.PLOT_WIDTH,
             height=self.PLOT_HEIGHT,
             margin=dict(t=80, l=50, r=50, b=50), # Consistent margins
@@ -124,10 +148,9 @@ class Visualizer:
         )
         
         fig.update_traces(
-            marker_color=self.THEME_COLORS['primary'], # Fixed color
             marker_line_width=0,
             # Use customdata[0] for formatted time, customdata[1] for books
-            hovertemplate="<br><b>Week</b>: %{x|%b %d}<br><b>Time</b>: %{customdata[0]}<br><br><b>Books:</b><br>%{customdata[1]}<extra></extra>",
+            hovertemplate="<br><b>%{customdata[2]}</b><br><b>Time</b>: %{customdata[0]}<br><b>Books:</b><br>%{customdata[1]}<extra></extra>",
             hoverlabel=dict(bgcolor="black") # Black background
         )
         
@@ -151,7 +174,11 @@ class Visualizer:
             df = df[df['year'] == target_year]
             title = f'Reading Calendar ({target_year})'
             year = target_year
-            
+        
+        # Exclude Paperback data (synthetic daily sessions don't reflect actual habits)
+        if 'format' in df.columns:
+            df = df[df['format'] != 'paperback']
+
         if df.empty:
             return None
             
@@ -299,7 +326,7 @@ class Visualizer:
             )
             
         fig.update_layout(
-            title=dict(text=title, x=0.5),
+            title=dict(text=title, x=0.5, xanchor='center', y=0.98),
             paper_bgcolor=self.THEME_COLORS['paper'],
             plot_bgcolor=self.THEME_COLORS['background'],
             font_color=self.THEME_COLORS['text'],
