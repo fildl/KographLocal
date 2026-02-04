@@ -197,8 +197,18 @@ else:
     except Exception as e:
         st.error(f"Could not render Reading Calendar: {e}")
 
+# --- 4. Reading Habits (Patterns) ---
+st.subheader("Reading Habits")
+try:
+    fig_patterns = viz.plot_reading_patterns(year=plot_year)
+    if fig_patterns:
+        st.plotly_chart(fig_patterns, use_container_width=True)
+    else:
+        st.info("No pattern data available.")
+except Exception as e:
+    st.error(f"Could not render Reading Patterns: {e}")
 
-# --- 5. Reading Habits (Streaks) ---
+# --- 5. Reading Streaks ---
 st.subheader("Reading Streaks")
 # --- 5b. Streak Histogram (Distribution) ---
 # Shown first or second? Usually Calendar is larger. 

@@ -1486,3 +1486,112 @@ class Visualizer:
         )
             
         return fig
+
+    def plot_reading_patterns(self, year: int = None):
+        """
+        Analysis of Reading Patterns.
+        Subplot 1: Daily Reading Pattern (Avg minutes read on a given weekday).
+        Subplot 2: Monthly Reading Pattern (Avg minutes read in a month for All Time, or Total for Single Year).
+        """
+        df = self.data.copy()
+        
+        # Filter by year if needed
+        if year:
+            df = df[df['year'] == year]
+            title = 'Reading Habits' 
+        else:
+            title = 'Reading Habits'
+
+        if df.empty:
+            return None
+            
+        # 1. Prepare Daily Data (Total minutes per day)
+        daily = df.groupby('date')['duration'].sum().reset_index()
+        daily['minutes'] = daily['duration'] / 60
+        daily['date'] = pd.to_datetime(daily['date'])
+        daily['day_of_week'] = daily['date'].dt.dayofweek
+        daily['month'] = daily['date'].dt.month
+        
+        # --- Subplot 1: Daily Pattern (Avg Minutes per Weekday) ---
+        weekday_avg = daily.groupby('day_of_week')['minutes'].mean().reset_index()
+        days_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
+        weekday_avg['Day'] = weekday_avg['day_of_week'].map(days_map)
+        
+        # --- Subplot 2: Monthly Pattern ---
+        if year:
+            # Single Year: Absolute Minutes per Month
+            monthly_data = daily.groupby('month')['minutes'].sum().reset_index()
+            y_col = 'minutes'
+            y_label_month = 'Total Minutes'
+            hover_template_month = "<b>%{x}</b><br>Total: %{y:.0f} min<extra></extra>"
+        else:
+            # All Time: Average Minutes per Month
+            # Average across years
+            monthly_totals = daily.groupby([daily['date'].dt.to_period('M')])['minutes'].sum().reset_index()
+            monthly_totals['month'] = monthly_totals['date'].dt.month
+            monthly_data = monthly_totals.groupby('month')['minutes'].mean().reset_index()
+            y_col = 'minutes'
+            y_label_month = 'Avg Minutes'
+            hover_template_month = "<b>%{x}</b><br>Avg: %{y:.1f} min<extra></extra>"
+
+        import calendar
+        monthly_data['Month'] = monthly_data['month'].apply(lambda x: calendar.month_abbr[x])
+
+        # Create Subplots
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=("Daily Reading Pattern", f"Monthly Reading Pattern"),
+            horizontal_spacing=0.15
+        )
+        
+        # Trace 1: Weekday
+        fig.add_trace(
+            go.Bar(
+                x=weekday_avg['Day'],
+                y=weekday_avg['minutes'],
+                name="Weekday",
+                marker_color=self.THEME_COLORS['primary'],
+                hovertemplate="<b>%{x}</b><br>Avg: %{y:.1f} min<extra></extra>"
+            ),
+            row=1, col=1
+        )
+        
+        # Trace 2: Month
+        fig.add_trace(
+            go.Bar(
+                x=monthly_data['Month'],
+                y=monthly_data[y_col],
+                name="Month",
+                marker_color=self.THEME_COLORS['accent'],
+                hovertemplate=hover_template_month
+            ),
+            row=1, col=2
+        )
+        
+        # Styling
+        fig.update_layout(
+            title=dict(text=title, x=0.5, xanchor='center', y=0.95),
+            paper_bgcolor=self.THEME_COLORS['paper'],
+            plot_bgcolor=self.THEME_COLORS['background'],
+            font_color=self.THEME_COLORS['text'],
+            width=self.PLOT_WIDTH,
+            height=self.PLOT_HEIGHT,
+            margin=dict(t=80, l=50, r=50, b=50),
+            showlegend=False,
+            yaxis=dict(title='Avg Minutes', gridcolor=self.THEME_COLORS['grid']),
+            yaxis2=dict(title=y_label_month, gridcolor=self.THEME_COLORS['grid'])
+        )
+        
+        # Sort Month Axis
+        fig.update_xaxes(
+            categoryorder='array', 
+            categoryarray=[calendar.month_abbr[i] for i in range(1, 13)],
+            row=1, col=2
+        )
+        
+        fig.update_traces(
+            marker_line_width=0,
+            hoverlabel=dict(bgcolor="black")
+        )
+        
+        return fig
