@@ -173,6 +173,17 @@ try:
 except Exception as e:
     st.error(f"Could not render Weekly Activity: {e}")
 
+# --- 4. Time of Day Distribution ---
+st.subheader("Time of Day Distribution")
+try:
+    fig_hourly = viz.plot_time_of_day(year=plot_year)
+    if fig_hourly:
+        st.plotly_chart(fig_hourly, use_container_width=True)
+    else:
+         st.info("No data available.")
+except Exception as e:
+    st.error(f"Could not render Time of Day: {e}")
+
 # --- 3. Reading Calendar ---
 st.subheader("Reading Calendar")
 if selected_year == "All Time":
@@ -187,14 +198,33 @@ else:
     except Exception as e:
         st.error(f"Could not render Reading Calendar: {e}")
 
-# --- 4. Time of Day Distribution ---
-st.subheader("Time of Day Distribution")
-try:
-    fig_hourly = viz.plot_time_of_day(year=plot_year)
-    if fig_hourly:
-        st.plotly_chart(fig_hourly, use_container_width=True)
-    else:
-         st.info("No data available.")
-except Exception as e:
-    st.error(f"Could not render Time of Day: {e}")
+
+# --- 5. Reading Habits (Streaks) ---
+st.subheader("Reading Streaks")
+col_streak_1, col_streak_2 = st.columns([1, 1])
+
+with col_streak_1:
+    try:
+        # 5a. Streak Calendar (3x4 Grid)
+        if selected_year == "All Time":
+             st.info("Select a specific year to view daily streak calendar.")
+        else:
+            fig_streak_cal = viz.plot_streak_calendar(year=plot_year)
+            if fig_streak_cal:
+                st.plotly_chart(fig_streak_cal, use_container_width=True)
+            else:
+                st.info("No streak data for this year.")
+    except Exception as e:
+        st.error(f"Could not render Streak Calendar: {e}")
+
+with col_streak_2:
+    try:
+        # 5b. Streak Histogram (Distribution)
+        fig_streak_hist = viz.plot_streaks(year=plot_year)
+        if fig_streak_hist:
+            st.plotly_chart(fig_streak_hist, use_container_width=True)
+        else:
+            st.info("No streak data available.")
+    except Exception as e:
+        st.error(f"Could not render Streak Histogram: {e}")
 

@@ -516,6 +516,8 @@ class Visualizer:
             height=self.PLOT_HEIGHT,
             margin=dict(t=80, l=50, r=50, b=50),
             title_x=0.5,
+            title_xanchor='center',
+            title_y=0.95,
             showlegend=False,
             xaxis=dict(
                 title='Streak Length (Days)',
@@ -724,7 +726,7 @@ class Visualizer:
             fig.update_yaxes(showgrid=False, zeroline=False, showticklabels=False, range=[-0.5, 6.5], row=row, col=col)
 
         fig.update_layout(
-            title=dict(text=title, x=0.5),
+            title=dict(text=title, x=0.5, xanchor='center', y=0.98),
             paper_bgcolor=self.THEME_COLORS['paper'],
             plot_bgcolor=self.THEME_COLORS['background'],
             font_color=self.THEME_COLORS['text'],
