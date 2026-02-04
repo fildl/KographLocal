@@ -1285,17 +1285,31 @@ class Visualizer:
             
         if year:
             df = df[df['year'] == year]
-            title = f'Cumulative Pages Read ({year})'
-        else:
-            title = 'Cumulative Pages Read (All Time)'
+        
+        title = 'Cumulative Pages Read'
 
-        if df.empty or 'pages_read' not in df.columns:
+        if df.empty:
             return None
-            
+
+        # Ensure pages_read column exists
+        if 'pages_read' not in df.columns:
+            df['pages_read'] = 0
+
+        # Logic for Audiobooks: 60 seconds = 1 page
+        if 'format' in df.columns and 'duration' in df.columns:
+            # We use loc to handle the assignment safely
+            audio_mask = df['format'] == 'audiobook'
+            if audio_mask.any():
+                # duration is in seconds. 60s = 1 page.
+                df.loc[audio_mask, 'pages_read'] = df.loc[audio_mask, 'duration'] / 60
+
         # 1. Aggregate Daily Pages by Format
         daily_pages = df.groupby(['date', 'format'])['pages_read'].sum().reset_index()
         
         # 2. Pivot to ensure full date coverage for all formats (fill 0)
+        if daily_pages.empty:
+            return None
+
         # Create full date range to handle gaps
         min_date = daily_pages['date'].min()
         max_date = daily_pages['date'].max()
@@ -1314,12 +1328,6 @@ class Visualizer:
             value_name='Cumulative Pages'
         )
         
-        # Color Mapping
-        color_map = {
-            'kindle': self.THEME_COLORS['primary'],   # Cyan
-            'paper': self.THEME_COLORS['accent']      # Yellow
-        }
-        
         # Plot
         fig = px.area(
             plot_df,
@@ -1327,7 +1335,7 @@ class Visualizer:
             y='Cumulative Pages',
             color='Format',
             title=title,
-            color_discrete_map=color_map
+            color_discrete_map=self.FORMAT_COLORS
         )
         
         fig.update_layout(
@@ -1338,6 +1346,8 @@ class Visualizer:
             height=self.PLOT_HEIGHT,
             margin=dict(t=80, l=50, r=50, b=50),
             title_x=0.5,
+            title_xanchor='center',
+            title_y=0.95,
             xaxis=dict(
                 gridcolor=self.THEME_COLORS['grid'],
                 showgrid=True
@@ -1372,58 +1382,51 @@ class Visualizer:
         """
         df = self.data.copy()
         
-        # 1. Determine Finish Date for each book
-        # Group by book and get the last reading date
-        books_finished = df.groupby(['id_book', 'title'])['start_datetime'].max().reset_index()
-        books_finished.columns = ['id_book', 'title', 'finish_date']
+        # 1. Determine Finish Date and Format for each book
+        # Group by book and get the last reading date + format (assuming format constant per book)
+        books_finished = df.groupby(['id_book', 'title']).agg({
+            'start_datetime': 'max',
+            'format': 'first' # Get format
+        }).reset_index()
+        books_finished.columns = ['id_book', 'title', 'finish_date', 'format']
         
         # 2. Filter by Year
         if year:
             books_finished = books_finished[books_finished['finish_date'].dt.year == year]
             freq = 'MS' # Month Start for cleaner alignment
-            x_format = '%B'
         else:
             freq = 'QS' # Quarter Start
-            x_format = '%Y Q%q'
         
         title_text = 'Books Completed'
 
         if books_finished.empty and not year:
-            # Only return None if empty AND strictly no container needed?
-            # Actually, for year view, we want to show empty chart if filtered year is empty? 
-            # Or assume valid year passed.
             if year:
-                 # Initialize empty DF if needed to show 0-bar chart, but usually we can proceed
                  pass
             else:
                 return None
             
-        # 3. Resample
+        # 3. Resample by Time AND Format
+        # We need to set index to finish_date
         books_finished.set_index('finish_date', inplace=True)
         
-        # Aggregation: Count and List of Titles
-        # customized aggregation to get list of titles
+        # Helper for titles
         def get_titles(series):
             return '<br>'.join([f"• {t}" for t in series])
-            
-        resampled = books_finished.resample(freq).agg({
+        
+        # We need to group by format as well for resampling.
+        # But resample is time-based. We can group by [pd.Grouper(freq=freq), 'format']
+        resampled = books_finished.groupby([pd.Grouper(freq=freq), 'format']).agg({
             'title': ['count', get_titles]
         })
         
         # Flatten columns
         resampled.columns = ['count', 'titles_list']
-        
-        # Force Full Range if Year is selected
-        if year:
-            full_year_index = pd.date_range(start=f'{year}-01-01', end=f'{year}-12-01', freq='MS')
-            resampled = resampled.reindex(full_year_index)
-            resampled.index.name = 'finish_date'
-            
-        # Fill NaNs from reindex
-        resampled['count'] = resampled['count'].fillna(0)
-        resampled['titles_list'] = resampled['titles_list'].fillna('')
-        
         resampled = resampled.reset_index()
+        
+        # Force Full Range if Year is selected (for all formats? logic gets complex with stacking)
+        # If we reindex, we lose the format-grouping structure unless we do it per format or cross join.
+        # Simpler approach: Just plot what exists. If a month has 0 books, it won't show a bar.
+        # If user explicitly wants empty months, we can reindex the time column specifically.
         
         # Prepare X-Axis Column
         x_col = 'finish_date'
@@ -1432,13 +1435,16 @@ class Visualizer:
             resampled['quarter_label'] = resampled['finish_date'].apply(lambda d: f"{d.year} Q{d.quarter}")
             x_col = 'quarter_label'
         
-        # 4. Plot
+        # 4. Plot (Stacked Bar)
         fig = px.bar(
             resampled,
             x=x_col,
             y='count',
+            color='format',
             title=title_text,
-            labels={'finish_date': 'Date', 'quarter_label': 'Quarter', 'count': 'Books Completed'},
+            labels={'finish_date': 'Date', 'quarter_label': 'Quarter', 'count': 'Books Completed', 'format': 'Format'},
+            custom_data=['titles_list'],
+            color_discrete_map=self.FORMAT_COLORS
         )
         
         fig.update_layout(
@@ -1460,25 +1466,23 @@ class Visualizer:
                 showgrid=True,
                 dtick=1 # Ensure integer ticks
             ),
-            bargap=0.2
+            bargap=0.2,
         )
         
         # Update Bars & Format
-        hover_template = "<b>%{x}</b><br>Count: %{y}<br><br>%{customdata}<extra></extra>"
+        hover_template = "<b>%{x}</b><br>Count: %{y}<br><br>%{customdata[0]}<extra></extra>"
         if year:
             # Yearly View: Date Axis
             fig.update_xaxes(dtick="M1", tickformat="%b")
-            fig.update_traces(hovertemplate="<b>%{x|%B %Y}</b><br>Count: %{y}<br><br>%{customdata}<extra></extra>")
+            fig.update_traces(hovertemplate="<b>%{x|%B %Y}</b><br>Count: %{y}<br><br>%{customdata[0]}<extra></extra>")
         else:
             # All Time View: Categorical Quarter Strings
             fig.update_xaxes(type='category')
-            fig.update_traces(hovertemplate="<b>%{x}</b><br>Count: %{y}<br><br>%{customdata}<extra></extra>")
+            fig.update_traces(hovertemplate="<b>%{x}</b><br>Count: %{y}<br><br>%{customdata[0]}<extra></extra>")
         
         fig.update_traces(
-            marker_color=self.THEME_COLORS['secondary'], 
             marker_line_width=0,
-            hoverlabel=dict(bgcolor="black"),
-            customdata=resampled['titles_list']
+            hoverlabel=dict(bgcolor="black")
         )
             
         return fig

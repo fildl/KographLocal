@@ -238,3 +238,14 @@ try:
         st.info("No books completed in this period.")
 except Exception as e:
     st.error(f"Could not render Books Completed: {e}")
+
+# --- 7. Cumulative Pages ---
+st.subheader("Cumulative Pages")
+try:
+    fig_pages = viz.plot_cumulative_pages(year=plot_year)
+    if fig_pages:
+        st.plotly_chart(fig_pages, use_container_width=True)
+    else:
+        st.info("No page data available (Audiobooks may not have page counts).")
+except Exception as e:
+    st.error(f"Could not render Cumulative Pages: {e}")
