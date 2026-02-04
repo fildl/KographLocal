@@ -206,6 +206,16 @@ st.subheader("Reading Streaks")
 # Let's keep the order: Calendar then Histogram.
 
 try:
+    # 5b. Streak Histogram (Distribution)
+    fig_streak_hist = viz.plot_streaks(year=plot_year)
+    if fig_streak_hist:
+        st.plotly_chart(fig_streak_hist, use_container_width=True)
+    else:
+        st.info("No streak data available.")
+except Exception as e:
+    st.error(f"Could not render Streak Histogram: {e}")
+
+try:
     # 5a. Streak Calendar (3x4 Grid)
     if selected_year == "All Time":
          st.info("Select a specific year to view daily streak calendar.")
@@ -217,16 +227,3 @@ try:
             st.info("No streak data for this year.")
 except Exception as e:
     st.error(f"Could not render Streak Calendar: {e}")
-
-st.markdown("---")
-
-try:
-    # 5b. Streak Histogram (Distribution)
-    fig_streak_hist = viz.plot_streaks(year=plot_year)
-    if fig_streak_hist:
-        st.plotly_chart(fig_streak_hist, use_container_width=True)
-    else:
-        st.info("No streak data available.")
-except Exception as e:
-    st.error(f"Could not render Streak Histogram: {e}")
-
