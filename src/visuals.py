@@ -1380,13 +1380,13 @@ class Visualizer:
         # 2. Filter by Year
         if year:
             books_finished = books_finished[books_finished['finish_date'].dt.year == year]
-            title_text = f'Books Completed ({year})'
             freq = 'MS' # Month Start for cleaner alignment
             x_format = '%B'
         else:
-            title_text = 'Books Completed (All Time)'
             freq = 'QS' # Quarter Start
             x_format = '%Y Q%q'
+        
+        title_text = 'Books Completed'
 
         if books_finished.empty and not year:
             # Only return None if empty AND strictly no container needed?
@@ -1449,6 +1449,8 @@ class Visualizer:
             height=self.PLOT_HEIGHT,
             margin=dict(t=80, l=50, r=50, b=50),
             title_x=0.5,
+            title_xanchor='center',
+            title_y=0.95,
             xaxis=dict(
                 gridcolor=self.THEME_COLORS['grid'],
                 showgrid=False

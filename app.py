@@ -227,3 +227,14 @@ try:
             st.info("No streak data for this year.")
 except Exception as e:
     st.error(f"Could not render Streak Calendar: {e}")
+
+# --- 6. Books Completed ---
+st.subheader("Books Completed")
+try:
+    fig_completed = viz.plot_books_completed(year=plot_year)
+    if fig_completed:
+        st.plotly_chart(fig_completed, use_container_width=True)
+    else:
+        st.info("No books completed in this period.")
+except Exception as e:
+    st.error(f"Could not render Books Completed: {e}")
