@@ -1,22 +1,21 @@
 # Kograph Local
 
-Kograph Local is a Python-based generator that visualizes your **Koreader reading statistics**  and **Paper Books history**. It generates an interactive HTML dashboard with detailed analytics, timelines, and trends.
+Kograph Local is a **Streamlit-based dashboard** that visualizes your **Koreader reading statistics**, **Paper Books history**, and **Audio Books history**. It generates an interactive, filterable web interface with detailed analytics, timelines, and trends.
 
 ## Features
 
--   **Dashboard Generation**: Automatically builds a `dashboard.html` for "All Time" and each specific year.
+-   **Interactive Dashboard**: Filter data by Year and Format (Ebook, Paperback, Audiobook).
 -   **Multi-Source Data**:
     -   **Koreader**: Automatically syncs with `data/statistics.sqlite3` from your connected device.
     -   **Paper Books**: Integrates `data/paper_books.csv` to track physical reading history.
--   **Interactive Visualizations** (Plotly):
-    -   **Timeline**: Gantt-style view of all books read, with accurate start/end dates.
-    -   **Weekly Activity**: Heatmap-style bar chart of reading hours per day.
-    -   **Reading Calendar**: Monthly calendar highlighting reading days and intensity.
-    -   **Streaks**: Analysis of reading streaks (Current, Longest, Total Days).
-    -   **Time of Day**: Radar/Area chart showing when you read most.
-    -   **Sessions**: Average session duration analysis by weekday and month.
-    -   **Cumulative Growth**: Stacked area chart showing total pages read over time (Kindle vs Paper).
-    -   **Books Completed**: Bar chart showing books finished per month (Yearly) and per quarter (All Time).
+    -   **Audio Books**: Integrates `data/audio_books.csv` to track audiobook history.
+-   **Rich Visualizations** (Plotly):
+    -   **Book Timeline**: Gantt-style view of all books read, with accurate start/end dates.
+    -   **Activity Patterns**: Weekly hours and Time of Day distribution.
+    -   **Reading Calendar**: Monthly calendar grid highlighting reading intensity.
+    -   **Streaks**: Analysis of reading streaks (Current, Longest, Daily Distribution).
+    -   **Cumulative Pages**: Stacked area chart showing total pages read over time.
+    -   **Books Completed**: Bar chart showing books finished per month.
 -   **Responsive Design**: Dark-themed dashboard optimized for desktop viewing.
 
 ## Showcase
@@ -47,21 +46,19 @@ Kograph Local is a Python-based generator that visualizes your **Koreader readin
 
 ## Usage
 
-Run the main script:
+Run the Streamlit application:
 
 ```bash
-python main.py
+streamlit run app.py
 ```
 
-It will:
+This will launch a local web server where you can explore your reading data.
+
+The app will automatically:
 1.  Load data from `data/statistics.sqlite3` (updating from Kindle if connected).
-2.  Load paper books from `data/paper_books.csv`.
+2.  Load paper books from `data/paper_books.csv` and audiobooks from `data/audio_books.csv`.
 3.  Process reading sessions and calculate metrics.
-4.  Generate HTML plots and Dashboards in the `output/` folder:
-    -   `output/all_time/dashboard.html`
-    -   `output/2026/dashboard.html`
-    -   `output/2025/dashboard.html`
-    -   ...
+4.  Display the interactive dashboard.
 
 ## Customization
 
@@ -70,13 +67,13 @@ It will:
 
 ## Project Structure
 
+-   `app.py`: Main Streamlit application entry point.
 -   `src/db.py`: Database connection and file syncing.
 -   `src/processing.py`: Data cleaning, sessionization, and metric calculation.
 -   `src/visuals.py`: Plotly chart generation (Visualizer class).
--   `src/report.py`: HTML Dashboard assembly (DashboardGenerator class).
--   `main.py`: Entry point and orchestration.
+-   `data/`: Directory for storing sqlite database and csv files.
 
 ## Notes
 
--   **Accuracy**: Proper `start_date` and `end_date` in `paper_books.csv` are crucial. This data is used effectively in the **Book Timeline**, **Cumulative Growth**, and **Books Completed** charts. Note that other detailed statistics (Streaks, Daily Patterns, etc.) currently rely only on Kindle data to ensure precision.
+-   **Accuracy**: Proper `start_date` and `end_date` in `paper_books.csv` are crucial. This data is used effectively in the **Book Timeline**, **Cumulative Growth**, and **Books Completed** charts. Note that other detailed statistics (Streaks, Daily Patterns, etc.) currently rely mainly on Kindle data or synthetic estimates for paper books.
 -   **Koreader Bugs**: The script automatically filters out "ghost" reading sessions (< 5 mins) and fixes zero-duration bugs common in Koreader stats.
