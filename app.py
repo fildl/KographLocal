@@ -136,15 +136,45 @@ books_read = filtered_combined['id_book'].nunique()
 # For now, let's show sessions count
 total_sessions = len(filtered_combined)
 
-# Longest streak calculation
+# Streak calculations
 streaks = viz._calculate_streaks(filtered_combined)
 longest_streak = max(streaks) if streaks else 0
 current_streak = streaks[-1] if streaks else 0
 
-col1.metric("Total Hours", f"{total_hours:.1f}h")
-col2.metric("Books Read", f"{books_read}")
-col3.metric("Sessions", f"{total_sessions}")
-col4.metric("Longest Streak", f"{longest_streak} days")
+# Daily Average Calculation (Minutes)
+total_minutes = filtered_combined['duration'].sum() / 60
+if not filtered_combined.empty:
+    min_date = filtered_combined['date'].min()
+    max_date = filtered_combined['date'].max()
+    
+    if selected_year != "All Time":
+        # For a specific year, use 365/366 days if the year is over, or days so far if current
+        # Actually simplest is just max - min + 1 of the specific filtered data?
+        # If I filter 2024, and have data from Jan 1 to Dec 31, it's 366.
+        # If I filter 2024, and have data only from Feb 1 to Feb 5, it's 5 days.
+        # "Daily Average" usually implies "Average over the whole period".
+        # Let's use the full year days if "All Time" is NOT selected to represent "Yearly Pace"?
+        # Or just (max-min) which represents "Active Period Average".
+        # User request "daily average" usually implies "How much I read on average".
+        # Using (max-min) is safer.
+        days_span = (max_date - min_date).days + 1
+    else:
+        days_span = (max_date - min_date).days + 1
+else:
+    days_span = 1
+
+daily_average = total_minutes / days_span if days_span > 0 else 0
+
+# Create two rows of metrics
+c1, c2, c3 = st.columns(3)
+c1.metric("Total Hours", f"{total_hours:.1f}h")
+c2.metric("Books Read", f"{books_read}")
+c3.metric("Sessions", f"{total_sessions}")
+
+c4, c5, c6 = st.columns(3)
+c4.metric("Daily Average", f"{daily_average:.0f}m")
+c5.metric("Longest Streak", f"{longest_streak} days")
+c6.metric("Current Streak", f"{current_streak} days")
 
 st.markdown("---")
 
@@ -182,6 +212,15 @@ try:
          st.info("No data available.")
 except Exception as e:
     st.error(f"Could not render Time of Day: {e}")
+
+try:
+    fig_dist = viz.plot_reading_distribution(year=plot_year)
+    if fig_dist:
+        st.plotly_chart(fig_dist, use_container_width=True)
+    else:
+        st.info("No distribution data available.")
+except Exception as e:
+    st.error(f"Could not render Reading Distribution: {e}")
 
 # --- 3. Reading Calendar ---
 st.subheader("Reading Calendar")

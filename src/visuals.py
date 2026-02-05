@@ -424,6 +424,81 @@ class Visualizer:
         
         return fig
 
+    def plot_reading_distribution(self, year: int = None):
+        """
+        Histogram of daily reading minutes, split by format.
+        """
+        df = self.data.copy()
+        
+        if year:
+            df = df[df['year'] == year]
+        
+        title = 'Daily Reading Minutes Distribution'
+        
+        # Exclude Paperback data to avoid synthetic peaks and maintain consistency with "Activity Patterns"
+        if 'format' in df.columns:
+            df = df[df['format'] != 'paperback']
+        
+        if df.empty:
+            return None
+
+        # Group by date AND format
+        daily = df.groupby(['date', 'format'])['duration'].sum().reset_index()
+        daily['minutes'] = daily['duration'] / 60
+        
+        if daily.empty:
+            return None
+
+        # Create Histogram
+        fig = px.histogram(
+            daily, 
+            x='minutes', 
+            color='format',
+            nbins=30, # Moderate bin count
+            title=title,
+            labels={'minutes': 'Daily Minutes', 'format': 'Format'},
+            color_discrete_map=self.FORMAT_COLORS
+        )
+        
+        # Styling
+        fig.update_layout(
+            paper_bgcolor=self.THEME_COLORS['paper'],
+            plot_bgcolor=self.THEME_COLORS['background'],
+            font_color=self.THEME_COLORS['text'],
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            title_x=0.5,
+            title_xanchor='center',
+            title_y=0.95,
+            width=self.PLOT_WIDTH,
+            height=self.PLOT_HEIGHT,
+            margin=dict(t=80, l=50, r=50, b=50),
+            xaxis=dict(
+                title='Daily Reading Minutes',
+                gridcolor=self.THEME_COLORS['grid'],
+                showgrid=False
+            ),
+            yaxis=dict(
+                title='Count of Days',
+                gridcolor=self.THEME_COLORS['grid'],
+                showgrid=True
+            ),
+            barmode='stack'
+        )
+        
+        fig.update_traces(
+            marker_line_width=0,
+            hoverlabel=dict(bgcolor="black")
+        )
+        
+        return fig
+
     def _calculate_streaks(self, df: pd.DataFrame, min_minutes=10) -> list[int]:
         """
         Calculate list of streak lengths (consecutive days with >= min_minutes reading).
@@ -487,7 +562,13 @@ class Visualizer:
             streak_counts, 
             x='length', 
             y='count',
-            title=title
+            color='length', # Map color to streak length
+            title=title,
+            # Used gradient from accent (Yellow) to secondary (Pink)
+            color_continuous_scale=[
+                [0, self.THEME_COLORS['accent']], 
+                [1, self.THEME_COLORS['secondary']]
+            ]
             # Removed text='count' to hide numbers inside bins
         )
         
@@ -523,6 +604,7 @@ class Visualizer:
             title_xanchor='center',
             title_y=0.95,
             showlegend=False,
+            coloraxis_showscale=False, # Hide the color bar
             xaxis=dict(
                 title='Streak Length (Days)',
                 dtick=1, # Show every integer
@@ -537,7 +619,7 @@ class Visualizer:
         )
         
         fig.update_traces(
-            marker_color=self.THEME_COLORS['secondary'],
+            # marker_color removed as it overrides color_continuous_scale
             marker_line_width=0,
             # Updated hovertemplate to match weekly_activity style
             hovertemplate="<br><b>Length</b>: %{x} days<br><b>Count</b>: %{y}<extra></extra>",
@@ -1035,245 +1117,7 @@ class Visualizer:
 
         return fig
 
-    def plot_daily_pattern(self, year: int = None):
-        """
-        Bar chart of Average Reading Duration by Day of Week.
-        """
-        df = self.data.copy()
-        if year:
-            df = df[df['year'] == year]
-            title = f'Daily Reading Pattern ({year})'
-        else:
-            title = 'Daily Reading Pattern (All Time)'
 
-        if df.empty:
-            return None
-        
-        # 1. Calculate Daily Totals (to account for multiple sessions per day)
-        daily_totals = df.groupby(['date', 'day_of_week'])['duration'].sum().reset_index()
-        
-        # 2. Calculate Average per Day of Week
-        weekday_stats = daily_totals.groupby('day_of_week')['duration'].mean().reset_index()
-        weekday_stats['minutes'] = weekday_stats['duration'] / 60
-        
-        # Map 0-6 to Names
-        days_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
-        weekday_stats['Day'] = weekday_stats['day_of_week'].map(days_map)
-        
-        fig = px.bar(
-            weekday_stats,
-            x='Day',
-            y='minutes',
-            title=title,
-            labels={'minutes': 'Average Minutes', 'Day': ''}
-        )
-        
-        fig.update_layout(
-            paper_bgcolor=self.THEME_COLORS['paper'],
-            plot_bgcolor=self.THEME_COLORS['background'],
-            font_color=self.THEME_COLORS['text'],
-            width=self.PLOT_WIDTH,
-            height=self.PLOT_HEIGHT,
-            margin=dict(t=80, l=50, r=50, b=50),
-            title_x=0.5,
-            showlegend=False,
-            xaxis=dict(
-                gridcolor=self.THEME_COLORS['grid'],
-                showgrid=False
-            ),
-            yaxis=dict(
-                gridcolor=self.THEME_COLORS['grid'],
-                title='Average Minutes / Day'
-            )
-        )
-        
-        fig.update_traces(
-            marker_color=self.THEME_COLORS['primary'],
-            marker_line_width=0,
-            hovertemplate="<br><b>Day</b>: %{x}<br><b>Avg</b>: %{y:.1f} min<extra></extra>",
-            hoverlabel=dict(bgcolor="black")
-        )
-        
-        return fig
-
-    def plot_monthly_pattern(self, year: int = None):
-        """
-        Bar chart of Reading Hours by Month.
-        - Specific Year: Total Hours per Month + Book List.
-        - All Time: Average Hours per Month (across years).
-        """
-        df = self.data.copy()
-        
-        if df.empty:
-            return None
-            
-        import calendar
-        month_order = [calendar.month_abbr[i] for i in range(1, 13)]
-        
-        if year:
-            # Specific Year: Total Hours + Book List
-            df = df[df['year'] == year]
-            title = f'Monthly Reading Pattern ({year})'
-            y_label = 'Total Reading Hours'
-            
-            # Group by Month -> Sum Duration & Aggregate Books
-            monthly_stats = df.groupby('month').agg({
-                'duration': 'sum',
-                'title': lambda x: '<br>'.join(sorted(list(set(x)))[:5]) + ('...' if len(set(x)) > 5 else '')
-            }).reset_index()
-            
-            monthly_stats['value'] = monthly_stats['duration'] / 3600
-            monthly_stats['books_list'] = monthly_stats['title']
-            
-            tooltip_template = "<br><b>Month</b>: %{x}<br><b>Total</b>: %{y:.1f} hrs<br><br><b>Books:</b><br>%{customdata[0]}<extra></extra>"
-            custom_data_cols = ['books_list']
-        else:
-            # All Time: Average Hours per Month
-            title = 'Average Monthly Reading Pattern (All Time)'
-            y_label = 'Average Hours'
-            tooltip_template = "<br><b>Month</b>: %{x}<br><b>Avg</b>: %{y:.1f} hrs<extra></extra>"
-            custom_data_cols = []
-            
-            # 1. Calculate Monthly Totals for each Year-Month pair
-            monthly_year_stats = df.groupby(['year', 'month'])['duration'].sum().reset_index()
-            
-            # 2. Calculate Average across years for each month
-            monthly_stats = monthly_year_stats.groupby('month')['duration'].mean().reset_index()
-            monthly_stats['value'] = monthly_stats['duration'] / 3600
-
-        # Map 1-12 to Names
-        monthly_stats['Month'] = monthly_stats['month'].apply(lambda x: calendar.month_abbr[x])
-        
-        fig = px.bar(
-            monthly_stats,
-            x='Month',
-            y='value',
-            title=title,
-            labels={'value': y_label, 'Month': ''},
-            custom_data=custom_data_cols
-        )
-        
-        fig.update_xaxes(categoryorder='array', categoryarray=month_order)
-        
-        fig.update_layout(
-            paper_bgcolor=self.THEME_COLORS['paper'],
-            plot_bgcolor=self.THEME_COLORS['background'],
-            font_color=self.THEME_COLORS['text'],
-            width=self.PLOT_WIDTH,
-            height=self.PLOT_HEIGHT,
-            margin=dict(t=80, l=50, r=50, b=50),
-            title_x=0.5,
-            showlegend=False,
-            xaxis=dict(
-                gridcolor=self.THEME_COLORS['grid'],
-                showgrid=False
-            ),
-            yaxis=dict(
-                gridcolor=self.THEME_COLORS['grid'],
-                title=y_label
-            )
-        )
-        
-        fig.update_traces(
-            marker_color=self.THEME_COLORS['accent'], 
-            marker_line_width=0,
-            hovertemplate=tooltip_template,
-            hoverlabel=dict(bgcolor="black")
-        )
-        
-        return fig
-
-    def plot_session_duration(self, year: int = None):
-        """
-        Analysis of Reading Sessions (Avg Duration).
-        Layout:
-        - Subplot 1: Avg Session Duration by Day of Week.
-        - Subplot 2: Avg Session Duration by Month.
-        """
-        df = self.data.copy()
-        if year:
-            df = df[df['year'] == year]
-            title = f'Session Analysis ({year})'
-        else:
-            title = 'Session Analysis (All Time)'
-
-        if df.empty or 'session_id' not in df.columns:
-            return None
-            
-        # 1. Aggregate into Sessions
-        # usage events -> single session row
-        sessions = df.groupby('session_id').agg({
-            'duration': 'sum',
-            'start_datetime': 'min' # Use start of session for classification
-        }).reset_index()
-        
-        sessions['minutes'] = sessions['duration'] / 60
-        sessions['day_of_week'] = sessions['start_datetime'].dt.dayofweek
-        sessions['month'] = sessions['start_datetime'].dt.month
-        
-        # 2. Avg by Weekday
-        weekday_stats = sessions.groupby('day_of_week')['minutes'].agg(['mean', 'count']).reset_index()
-        days_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
-        weekday_stats['Day'] = weekday_stats['day_of_week'].map(days_map)
-        
-        # 3. Avg by Month
-        month_stats = sessions.groupby('month')['minutes'].agg(['mean', 'count']).reset_index()
-        import calendar
-        month_stats['Month'] = month_stats['month'].apply(lambda x: calendar.month_abbr[x])
-        
-        # Prepare Subplots
-        fig = make_subplots(
-            rows=1, cols=2,
-            subplot_titles=("Avg Session by Weekday", "Avg Session by Month"),
-            horizontal_spacing=0.1
-        )
-        
-        # Trace 1: Weekday
-        fig.add_trace(
-            go.Bar(
-                x=weekday_stats['Day'],
-                y=weekday_stats['mean'],
-                name="Weekday",
-                marker_color=self.THEME_COLORS['primary'],
-                hovertemplate="<b>%{x}</b><br>Avg: %{y:.1f} min<br>Sessions: %{customdata}<extra></extra>",
-                customdata=weekday_stats['count']
-            ),
-            row=1, col=1
-        )
-        
-        # Trace 2: Month
-        fig.add_trace(
-            go.Bar(
-                x=month_stats['Month'],
-                y=month_stats['mean'],
-                name="Month",
-                marker_color=self.THEME_COLORS['accent'],
-                hovertemplate="<b>%{x}</b><br>Avg: %{y:.1f} min<br>Sessions: %{customdata}<extra></extra>",
-                customdata=month_stats['count']
-            ),
-            row=1, col=2
-        )
-        
-        # Styling
-        fig.update_layout(
-            title=dict(text=title, x=0.5),
-            paper_bgcolor=self.THEME_COLORS['paper'],
-            plot_bgcolor=self.THEME_COLORS['background'],
-            font_color=self.THEME_COLORS['text'],
-            width=self.PLOT_WIDTH,
-            height=self.PLOT_HEIGHT,
-            margin=dict(t=80, l=50, r=50, b=50),
-            showlegend=False,
-            yaxis=dict(title='Avg Duration (min)', gridcolor=self.THEME_COLORS['grid']),
-            yaxis2=dict(title='Avg Duration (min)', gridcolor=self.THEME_COLORS['grid'])
-        )
-        
-        # Sort Month Axis
-        fig.update_xaxes(
-            categoryorder='array', 
-            categoryarray=[calendar.month_abbr[i] for i in range(1, 13)],
-            row=1, col=2
-        )
         
     def plot_cumulative_pages(self, year: int = None):
         """
@@ -1489,9 +1333,9 @@ class Visualizer:
 
     def plot_reading_patterns(self, year: int = None):
         """
-        Analysis of Reading Patterns.
-        Subplot 1: Daily Reading Pattern (Avg minutes read on a given weekday).
-        Subplot 2: Monthly Reading Pattern (Avg minutes read in a month for All Time, or Total for Single Year).
+        Analysis of Reading Patterns (Stacked by Format).
+        Subplot 1: Daily Reading Pattern (Avg minutes read on a given weekday, split by format).
+        Subplot 2: Monthly Reading Pattern (Avg/Total minutes read in a month, split by format).
         """
         df = self.data.copy()
         
@@ -1505,36 +1349,87 @@ class Visualizer:
         if df.empty:
             return None
             
-        # 1. Prepare Daily Data (Total minutes per day)
-        daily = df.groupby('date')['duration'].sum().reset_index()
+        # Ensure format column exists
+        if 'format' not in df.columns:
+            df['format'] = 'kindle'
+
+        # Determine full date range for normalization
+        min_date = df['date'].min()
+        max_date = df['date'].max()
+        
+        # If showing a specific year, ensure we cover the full year (or up to today if current year)
+        # Actually, best to just use the min/max from data or force full year range if 'year' is set?
+        # Let's stick to the data range to avoid skewing defined periods, 
+        # BUT for "Average" to be meaningful "Per Weekday", we need the count of weekdays in that range.
+        
+        if year:
+            # Force full year for correct month counts (12 months)
+            # But for weekdays, we use the actual range of the year
+            # min_date = pd.Timestamp(f"{year}-01-01")
+            # max_date = pd.Timestamp(f"{year}-12-31")
+            # However, if data only exists for Jan-Feb, dividing by 52 Mondays would be wrong.
+            # So using data range is safer.
+            pass
+            
+        full_date_range = pd.date_range(start=min_date, end=max_date)
+        
+        # 1. Prepare Daily Data (Total minutes per day and format)
+        daily = df.groupby(['date', 'format'])['duration'].sum().reset_index()
         daily['minutes'] = daily['duration'] / 60
         daily['date'] = pd.to_datetime(daily['date'])
         daily['day_of_week'] = daily['date'].dt.dayofweek
         daily['month'] = daily['date'].dt.month
         
-        # --- Subplot 1: Daily Pattern (Avg Minutes per Weekday) ---
-        weekday_avg = daily.groupby('day_of_week')['minutes'].mean().reset_index()
+        # --- Subplot 1: Daily Pattern (True Average Minutes per Weekday by Format) ---
+        # Calculate how many of each weekday exist in the full range
+        weekday_counts = full_date_range.dayofweek.value_counts().sort_index()
+        # weekday_counts is Series: index 0-6, value = count
+        
+        # Sum duration per [day_of_week, format]
+        weekday_sums = daily.groupby(['day_of_week', 'format'])['minutes'].sum().reset_index()
+        
+        # Normalize
+        def normalize_weekday(row):
+            count = weekday_counts.get(row['day_of_week'], 1)
+            return row['minutes'] / count if count > 0 else 0
+            
+        weekday_sums['avg_minutes'] = weekday_sums.apply(normalize_weekday, axis=1)
+        
         days_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
-        weekday_avg['Day'] = weekday_avg['day_of_week'].map(days_map)
+        weekday_sums['Day'] = weekday_sums['day_of_week'].map(days_map)
+        
+        import calendar
         
         # --- Subplot 2: Monthly Pattern ---
         if year:
-            # Single Year: Absolute Minutes per Month
-            monthly_data = daily.groupby('month')['minutes'].sum().reset_index()
+            # Single Year: Absolute Minutes per Month by Format (No Averaging needed over time)
+            # Just Sum.
+            monthly_data = daily.groupby(['month', 'format'])['minutes'].sum().reset_index()
             y_col = 'minutes'
             y_label_month = 'Total Minutes'
-            hover_template_month = "<b>%{x}</b><br>Total: %{y:.0f} min<extra></extra>"
+            hover_template_month = "<b>%{x}</b><br>Format: %{customdata[0]}<br>Total: %{y:.0f} min<extra></extra>"
         else:
-            # All Time: Average Minutes per Month
-            # Average across years
-            monthly_totals = daily.groupby([daily['date'].dt.to_period('M')])['minutes'].sum().reset_index()
-            monthly_totals['month'] = monthly_totals['date'].dt.month
-            monthly_data = monthly_totals.groupby('month')['minutes'].mean().reset_index()
-            y_col = 'minutes'
+            # All Time: Average Minutes per Month by Format
+            # Logic: Sum totals per month-format, then divide by number of times that month occurs.
+            
+            # Count occurrences of each month in full range
+            month_counts = full_date_range.month.value_counts().sort_index()
+            
+            # Sum per [month, format]
+            monthly_sums = daily.groupby(['month', 'format'])['minutes'].sum().reset_index()
+            
+            # Normalize
+            def normalize_month(row):
+                count = month_counts.get(row['month'], 1)
+                return row['minutes'] / count if count > 0 else 0
+                
+            monthly_sums['avg_minutes'] = monthly_sums.apply(normalize_month, axis=1)
+            monthly_data = monthly_sums
+            
+            y_col = 'avg_minutes'
             y_label_month = 'Avg Minutes'
-            hover_template_month = "<b>%{x}</b><br>Avg: %{y:.1f} min<extra></extra>"
+            hover_template_month = "<b>%{x}</b><br>Format: %{customdata[0]}<br>Avg: %{y:.1f} min<extra></extra>"
 
-        import calendar
         monthly_data['Month'] = monthly_data['month'].apply(lambda x: calendar.month_abbr[x])
 
         # Create Subplots
@@ -1544,30 +1439,54 @@ class Visualizer:
             horizontal_spacing=0.15
         )
         
-        # Trace 1: Weekday
-        fig.add_trace(
-            go.Bar(
-                x=weekday_avg['Day'],
-                y=weekday_avg['minutes'],
-                name="Weekday",
-                marker_color=self.THEME_COLORS['primary'],
-                hovertemplate="<b>%{x}</b><br>Avg: %{y:.1f} min<extra></extra>"
-            ),
-            row=1, col=1
-        )
+        # --- Trace 1: Weekday (Stacked by Format) ---
+        format_order = ['ebook', 'paperback', 'audiobook']
         
-        # Trace 2: Month
-        fig.add_trace(
-            go.Bar(
-                x=monthly_data['Month'],
-                y=monthly_data[y_col],
-                name="Month",
-                marker_color=self.THEME_COLORS['accent'],
-                hovertemplate=hover_template_month
-            ),
-            row=1, col=2
-        )
+        for fmt in format_order:
+            # Filter for this format
+            f_data = weekday_sums[weekday_sums['format'] == fmt]
+            if f_data.empty:
+                continue
+                
+            fig.add_trace(
+                go.Bar(
+                    x=f_data['Day'],
+                    y=f_data['avg_minutes'],
+                    name=fmt.title(),
+                    marker_color=self.FORMAT_COLORS.get(fmt, self.THEME_COLORS['primary']),
+                    hovertemplate="<b>%{x}</b><br>Format: " + fmt.title() + "<br>Avg: %{y:.1f} min<extra></extra>",
+                    showlegend=False
+                ),
+                row=1, col=1
+            )
+
+        # --- Trace 2: Month (Stacked by Format) ---
+        for fmt in format_order:
+            # Filter
+            m_data = monthly_data[monthly_data['format'] == fmt]
+            if m_data.empty:
+                continue
+                
+            fig.add_trace(
+                go.Bar(
+                    x=m_data['Month'],
+                    y=m_data[y_col],
+                    name=fmt.title(),
+                    marker_color=self.FORMAT_COLORS.get(fmt, self.THEME_COLORS['accent']),
+                    hovertemplate=hover_template_month.replace("%{customdata[0]}", fmt.title()),
+                    showlegend=True 
+                ),
+                row=1, col=2
+            )
         
+        # Merge legends
+        names = set()
+        for trace in fig.data:
+            if trace.name in names:
+                trace.showlegend = False
+            else:
+                names.add(trace.name)
+                
         # Styling
         fig.update_layout(
             title=dict(text=title, x=0.5, xanchor='center', y=0.95),
@@ -1577,9 +1496,16 @@ class Visualizer:
             width=self.PLOT_WIDTH,
             height=self.PLOT_HEIGHT,
             margin=dict(t=80, l=50, r=50, b=50),
-            showlegend=False,
+            barmode='stack', # Enable Stacking
             yaxis=dict(title='Avg Minutes', gridcolor=self.THEME_COLORS['grid']),
-            yaxis2=dict(title=y_label_month, gridcolor=self.THEME_COLORS['grid'])
+            yaxis2=dict(title=y_label_month, gridcolor=self.THEME_COLORS['grid']),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
         )
         
         # Sort Month Axis
@@ -1587,6 +1513,13 @@ class Visualizer:
             categoryorder='array', 
             categoryarray=[calendar.month_abbr[i] for i in range(1, 13)],
             row=1, col=2
+        )
+        
+        # Sort Weekday Axis (Mon-Sun)
+        fig.update_xaxes(
+            categoryorder='array',
+            categoryarray=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+            row=1, col=1
         )
         
         fig.update_traces(
