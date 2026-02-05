@@ -1172,6 +1172,11 @@ class Visualizer:
             value_name='Cumulative Pages'
         )
         
+        # Determine Stacking Order (Largest Total at Bottom)
+        # We want the format with the highest final cumulative value to be the first in the list (bottom of stack)
+        final_totals = cumulative_df.iloc[-1].sort_values(ascending=False)
+        sorted_formats = final_totals.index.tolist()
+        
         # Plot
         fig = px.area(
             plot_df,
@@ -1179,6 +1184,7 @@ class Visualizer:
             y='Cumulative Pages',
             color='Format',
             title=title,
+            category_orders={'Format': sorted_formats}, # Apply specific order
             color_discrete_map=self.FORMAT_COLORS
         )
         
