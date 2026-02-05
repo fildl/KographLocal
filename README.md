@@ -43,6 +43,13 @@ Kograph Local is a **Streamlit-based dashboard** that visualizes your **Koreader
         | title | authors | pages | start_date | end_date | language |
         | --- | --- | --- | --- | --- | --- |
         | The Great Gatsby | F. Scott Fitzgerald | 180 | 2024-01-01 | 2024-01-10 | en |
+    -   **Audio Books**: Create `data/audio_books.csv` (optional) to track listening sessions.
+        -   **Format**: `progress` should be cumulative time listened (H:MM).
+        
+        | title | authors | date | end_time | progress |
+        | --- | --- | --- | --- | --- |
+        | Atomic Habits | James Clear | 2024-02-01 | 18:30 | 0:45 |
+        | Atomic Habits | James Clear | 2024-02-02 | 20:15 | 1:30 |
 
 ## Usage
 
@@ -75,5 +82,5 @@ The app will automatically:
 
 ## Notes
 
--   **Accuracy**: Proper `start_date` and `end_date` in `paper_books.csv` are crucial. This data is used effectively in the **Book Timeline**, **Cumulative Growth**, and **Books Completed** charts. Note that other detailed statistics (Streaks, Daily Patterns, etc.) currently rely mainly on Kindle data or synthetic estimates for paper books.
+-   **Accuracy**: Detailed statistics (Streaks, Daily Patterns, etc.) currently rely mainly on Koreader and audiobook data, excluding synthetic sessions for paper books.
 -   **Koreader Bugs**: The script automatically filters out "ghost" reading sessions (< 5 mins) and fixes zero-duration bugs common in Koreader stats.
