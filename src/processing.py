@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 from datetime import timedelta
+import difflib
+import re
 try:
     from numbers_parser import Document
 except ImportError:
@@ -265,24 +267,74 @@ class DataProcessor:
             meta_df = meta_df[cols_to_keep].copy()
             meta_df.rename(columns=rename_map, inplace=True)
             
-            # Normalize titles for matching
-            meta_df['title_lower'] = meta_df['title_match'].astype(str).str.lower().str.strip()
-            target_df['title_lower'] = target_df['title'].astype(str).str.lower().str.strip()
+            # Prepare for Fuzzy Matching
+            # We want to map Target Title -> Meta Title
+            target_titles = target_df['title'].unique()
+            meta_titles = meta_df['title_match'].dropna().unique()
             
-            # Merge
-            # strict inner join? No, we want to keep all reading sessions even if no metadata
-            # left join
-            # Note: duplicates in metadata (multiple rows for same book) could explode the join?
-            # Let's drop duplicates in metadata first
-            meta_df.drop_duplicates(subset=['title_lower'], inplace=True)
+            title_map = {}
             
+            # Helper for token matching
+            def get_tokens(text):
+                return set(re.sub(r'[^a-z0-9\s]', '', str(text).lower()).split())
+
+            for t_title in target_titles:
+                # 1. Exact Match (Case Insensitive)
+                exact_matches = [m for m in meta_titles if m.lower().strip() == str(t_title).lower().strip()]
+                if exact_matches:
+                    title_map[t_title] = exact_matches[0]
+                    continue
+                    
+                # 2. Fuzzy Match (SequenceMatcher)
+                # Keep loose for typos, but check token match if this fails or is weak
+                matches = difflib.get_close_matches(str(t_title), [str(m) for m in meta_titles], n=1, cutoff=0.6)
+                if matches:
+                    # Optional: Verify it's not a false positive? 0.6 is fairly safe for long titles.
+                    title_map[t_title] = matches[0]
+                    continue
+
+                # 3. Token Set Match (for reordered titles)
+                # Check for high overlap of words
+                t_tokens = get_tokens(t_title)
+                best_match = None
+                best_score = 0
+                
+                for m_title in meta_titles:
+                    m_tokens = get_tokens(m_title)
+                    if not t_tokens or not m_tokens: continue
+                    
+                    common = t_tokens.intersection(m_tokens)
+                    # Score based on how much of the SHORTER title is covered by the overlap
+                    # This allows "Title Subtitle" to match "Title" if we want, or stricter?
+                    # For SAO 9: "SAO 9 Alicization" vs "Alicization SAO 9" -> 100% overlap
+                    
+                    if not common: continue
+                    
+                    # Jaccard might be better? intersection / union
+                    # SAO 9: 6 tokens / 6 tokens = 1.0
+                    jaccard = len(common) / len(t_tokens.union(m_tokens))
+                    
+                    if jaccard > 0.6 and jaccard > best_score:
+                        best_score = jaccard
+                        best_match = m_title
+                        
+                if best_match:
+                    title_map[t_title] = best_match
+                    
+            # Map the 'title_match' column in target_df
+            target_df['title_match'] = target_df['title'].map(title_map)
+            
+            # Drop duplicates in metadata to avoid explosion
+            meta_df.drop_duplicates(subset=['title_match'], inplace=True)
+            
+            # Merge on the matched title
             target_df = target_df.merge(
-                meta_df[['title_lower', 'author_country', 'purchase_date']],
-                on='title_lower',
+                meta_df[['title_match', 'author_country', 'purchase_date']],
+                on='title_match',
                 how='left'
             )
             
-            target_df.drop(columns=['title_lower'], inplace=True)
+            target_df.drop(columns=['title_match'], inplace=True)
             
             # Convert purchase_date to datetime
             if 'purchase_date' in target_df.columns:
