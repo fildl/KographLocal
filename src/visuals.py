@@ -433,7 +433,7 @@ class Visualizer:
         if year:
             df = df[df['year'] == year]
         
-        title = 'Daily Reading Minutes Distribution'
+        title = 'Daily Reading Time Distribution'
         
         # Exclude Paperback data to avoid synthetic peaks and maintain consistency with "Activity Patterns"
         if 'format' in df.columns:
@@ -1392,7 +1392,8 @@ class Visualizer:
         # weekday_counts is Series: index 0-6, value = count
         
         # Sum duration per [day_of_week, format]
-        weekday_sums = daily.groupby(['day_of_week', 'format'])['minutes'].sum().reset_index()
+        # Exclude paperback for daily pattern as synthetic data flattens the distribution
+        weekday_sums = daily[daily['format'] != 'paperback'].groupby(['day_of_week', 'format'])['minutes'].sum().reset_index()
         
         # Normalize
         def normalize_weekday(row):

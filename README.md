@@ -42,14 +42,24 @@ Kograph Local is a **Streamlit-based dashboard** that visualizes your **Koreader
     -   **Paper Books**: Create `data/paper_books.csv` with the following columns:
         | title | authors | pages | start_date | end_date | language |
         | --- | --- | --- | --- | --- | --- |
-        | The Great Gatsby | F. Scott Fitzgerald | 180 | 2024-01-01 | 2024-01-10 | en |
+        | The Great Gatsby | F. Scott Fitzgerald | 180 | 2026-01-01 | 2024-01-14 | en |
+        | Foundation and Earth | Isaac Asimov | 259 | 2026-01-15 | 2024-01-22 | en |
     -   **Audio Books**: Create `data/audio_books.csv` (optional) to track listening sessions.
         -   **Format**: `progress` should be cumulative time listened (H:MM).
         
         | title | authors | date | end_time | progress |
         | --- | --- | --- | --- | --- |
-        | Atomic Habits | James Clear | 2024-02-01 | 18:30 | 0:45 |
-        | Atomic Habits | James Clear | 2024-02-02 | 20:15 | 1:30 |
+        | Girl with Curious Hair | David Foster Wallace | 2026-02-01 | 18:30 | 0:45 |
+        | Girl with Curious Hair | David Foster Wallace | 2026-02-02 | 20:15 | 1:30 |
+
+    -   **Time Corrections**: (Optional) If your Kindle has an incorrect clock, create `data/time_corrections.csv` to automatically adjust timestamps for specific periods.
+        -   **Format**: `start_datetime`, `end_datetime`, `offset_minutes`
+        -   **Usage**: Positive `offset_minutes` adds time, negative subtracts. Leave `end_datetime` empty to apply correction indefinitely from start date.
+        
+        | start_datetime | end_datetime | offset_minutes |
+        | --- | --- | --- |
+        | 2024-01-01 00:00:00 | 2024-06-01 00:00:00 | 60 |
+        | 2024-06-02 00:00:00 | | -120 |
 
 ## Usage
 

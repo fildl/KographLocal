@@ -65,6 +65,64 @@ class DataProcessor:
         
         # Sort for sessionization
         self.merged_df.sort_values(['id_book', 'start_datetime'], inplace=True)
+        
+        # Apply manual time corrections
+        self._apply_time_corrections()
+
+    def _apply_time_corrections(self, csv_path='data/time_corrections.csv'):
+        """
+        Apply manual time offsets from a CSV file to correct Kindle clock errors.
+        Format: start_datetime, end_datetime, offset_minutes
+        """
+        try:
+            import os
+            if not os.path.exists(csv_path):
+                return
+
+            corrections_df = pd.read_csv(csv_path, comment='#', skipinitialspace=True)
+            corrections_df.columns = corrections_df.columns.str.strip()
+            
+            if corrections_df.empty:
+                return
+
+            # Parse datetimes (allow NaT for end_datetime)
+            corrections_df['start_datetime'] = pd.to_datetime(corrections_df['start_datetime'])
+            corrections_df['end_datetime'] = pd.to_datetime(corrections_df['end_datetime'])
+            
+            # Apply each correction rule
+            count = 0
+            for _, row in corrections_df.iterrows():
+                try:
+                    start_window = row['start_datetime']
+                    end_window = row['end_datetime']
+                    offset_min = float(row['offset_minutes'])
+                    
+                    if offset_min == 0:
+                        continue
+                        
+                    # Filter rows in window
+                    # If end_window is NaT (empty in CSV), treat as open-ended (until forever)
+                    if pd.isna(end_window):
+                        mask = (self.merged_df['start_datetime'] >= start_window)
+                    else:
+                        mask = (self.merged_df['start_datetime'] >= start_window) & \
+                               (self.merged_df['start_datetime'] <= end_window)
+                    
+                    # Ensure we only correct 'ebook' format (though at this stage usually only ebooks exist)
+                    if 'format' in self.merged_df.columns:
+                        mask = mask & (self.merged_df['format'] == 'ebook')
+
+                    if mask.any():
+                        self.merged_df.loc[mask, 'start_datetime'] += pd.Timedelta(minutes=offset_min)
+                        count += mask.sum()
+                except Exception as e:
+                    print(f"Error applying correction row: {e}")
+                    
+            if count > 0:
+                print(f"Applied time corrections to {count} reading sessions.")
+                
+        except Exception as e:
+            print(f"Failed to load time corrections from {csv_path}: {e}")
 
     def get_data_with_paper_books(self, csv_path):
         """
