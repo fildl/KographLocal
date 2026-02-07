@@ -7,7 +7,7 @@ Kograph Local is a **Streamlit-based dashboard** that visualizes your **Koreader
 -   **Interactive Dashboard**: Filter data by Year and Format (Ebook, Paperback, Audiobook).
 -   **Multi-Source Data**:
     -   **Koreader**: Automatically syncs with `data/statistics.sqlite3` from your connected device.
-    -   **Paper Books**: Integrates `data/paper_books.csv` to track physical reading history.
+    -   **Library (Numbers)**: Integrates a `.numbers` file for **Paper Books** history and metadata (Country, Purchase Date).
     -   **Audio Books**: Integrates `data/audio_books.csv` to track audiobook history.
 -   **Rich Visualizations** (Plotly):
     -   **Book Timeline**: Gantt-style view of all books read, with accurate start/end dates.
@@ -39,11 +39,11 @@ Kograph Local is a **Streamlit-based dashboard** that visualizes your **Koreader
 
 2.  **Data Setup**:
     -   **Kindle**: Connect your Kindle. The script looks for `statistics.sqlite3` in `/Volumes/Kindle/koreader/settings/` and copies it to `data/`.
-    -   **Paper Books**: Create `data/paper_books.csv` with the following columns:
-        | title | authors | pages | start_date | end_date | language |
-        | --- | --- | --- | --- | --- | --- |
-        | The Great Gatsby | F. Scott Fitzgerald | 180 | 2026-01-01 | 2024-01-14 | en |
-        | Foundation and Earth | Isaac Asimov | 259 | 2026-01-15 | 2024-01-22 | en |
+    -   **Kindle**: Connect your Kindle. The script looks for `statistics.sqlite3` in `/Volumes/Kindle/koreader/settings/` and copies it to `data/`.
+    -   **Library (Numbers)**: A `.numbers` file containing your full library.
+        -   **Paper Books**: Rows with `format` as 'Hardcover' or 'Paperback' are imported as reading sessions.
+            -   Required columns: `title`, `author`, `pages`, `start`, `finish`.
+        -   **Metadata**: Enriches all books with `nationality` and `purchase`.
     -   **Audio Books**: Create `data/audio_books.csv` (optional) to track listening sessions.
         -   **Format**: `progress` should be cumulative time listened (H:MM).
         

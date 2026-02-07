@@ -211,11 +211,54 @@ class DataProcessor:
                 combined_df.sort_values('start_datetime', inplace=True)
                 print(f"Added {len(paper_df)} paper books to combined dataset.")
                 
-            return combined_df
-                
         except Exception as e:
             print(f"Failed to load paper books from {csv_path}: {e}")
             return combined_df
+    
+    def _find_best_match(self, target_title, candidates):
+        """
+        Find best match for target_title in candidates list using multiple strategies.
+        Returns the matching candidate string or None.
+        """
+        t_title = str(target_title).strip()
+        t_lower = t_title.lower()
+        
+        # 1. Exact Match
+        for c in candidates:
+            if str(c).lower().strip() == t_lower:
+                return c
+                
+                
+                
+        # 2. Fuzzy Match (difflib)
+        matches = difflib.get_close_matches(t_title, [str(c) for c in candidates], n=1, cutoff=0.9)
+        if matches:
+            return matches[0]
+            
+        # 3. Token Set Match
+        def get_tokens(text):
+             return set(re.sub(r'[^a-z0-9\s]', '', str(text).lower()).split())
+             
+        t_tokens = get_tokens(t_title)
+        if not t_tokens: return None
+        
+        best_match = None
+        best_score = 0
+        
+        for c in candidates:
+            c_tokens = get_tokens(c)
+            if not c_tokens: continue
+            
+            common = t_tokens.intersection(c_tokens)
+            if not common: continue
+            
+            jaccard = len(common) / len(t_tokens.union(c_tokens))
+            
+            if jaccard > 0.8 and jaccard > best_score:
+                best_score = jaccard
+                best_match = c
+                
+        return best_match
 
     def get_data_with_metadata(self, metadata_path, current_combined_df=None):
         """
@@ -275,51 +318,11 @@ class DataProcessor:
             title_map = {}
             
             # Helper for token matching
-            def get_tokens(text):
-                return set(re.sub(r'[^a-z0-9\s]', '', str(text).lower()).split())
-
+            title_map = {}
             for t_title in target_titles:
-                # 1. Exact Match (Case Insensitive)
-                exact_matches = [m for m in meta_titles if m.lower().strip() == str(t_title).lower().strip()]
-                if exact_matches:
-                    title_map[t_title] = exact_matches[0]
-                    continue
-                    
-                # 2. Fuzzy Match (SequenceMatcher)
-                # Keep loose for typos, but check token match if this fails or is weak
-                matches = difflib.get_close_matches(str(t_title), [str(m) for m in meta_titles], n=1, cutoff=0.6)
-                if matches:
-                    # Optional: Verify it's not a false positive? 0.6 is fairly safe for long titles.
-                    title_map[t_title] = matches[0]
-                    continue
-
-                # 3. Token Set Match (for reordered titles)
-                # Check for high overlap of words
-                t_tokens = get_tokens(t_title)
-                best_match = None
-                best_score = 0
-                
-                for m_title in meta_titles:
-                    m_tokens = get_tokens(m_title)
-                    if not t_tokens or not m_tokens: continue
-                    
-                    common = t_tokens.intersection(m_tokens)
-                    # Score based on how much of the SHORTER title is covered by the overlap
-                    # This allows "Title Subtitle" to match "Title" if we want, or stricter?
-                    # For SAO 9: "SAO 9 Alicization" vs "Alicization SAO 9" -> 100% overlap
-                    
-                    if not common: continue
-                    
-                    # Jaccard might be better? intersection / union
-                    # SAO 9: 6 tokens / 6 tokens = 1.0
-                    jaccard = len(common) / len(t_tokens.union(m_tokens))
-                    
-                    if jaccard > 0.6 and jaccard > best_score:
-                        best_score = jaccard
-                        best_match = m_title
-                        
-                if best_match:
-                    title_map[t_title] = best_match
+                match = self._find_best_match(t_title, meta_titles)
+                if match:
+                    title_map[t_title] = match
                     
             # Map the 'title_match' column in target_df
             target_df['title_match'] = target_df['title'].map(title_map)
@@ -490,3 +493,157 @@ class DataProcessor:
 
     def get_cleaned_data(self):
         return self.merged_df
+
+    def get_paper_books_from_numbers(self, metadata_path, current_combined_df=None):
+        """
+        Extract paper books from Numbers file and merge meaningful sessions.
+        Replaces get_data_with_paper_books.
+        """
+        combined_df = current_combined_df if current_combined_df is not None else self.merged_df.copy()
+        
+        if not Document:
+            print("numbers-parser not installed.")
+            return combined_df
+            
+        try:
+            doc = Document(metadata_path)
+            sheets = doc.sheets
+            if not sheets: return combined_df
+            
+            table = sheets[0].tables[0]
+            data = table.rows(values_only=True)
+            if not data: return combined_df
+            
+            # Create DF from Numbers Data
+            raw_df = pd.DataFrame(data[1:], columns=data[0])
+            raw_df.columns = raw_df.columns.str.strip().str.lower()
+            
+            # Filter for Paper Books: 'hardcover' or 'paperback'
+            if 'format' not in raw_df.columns:
+                print("Numbers file missing 'format' column.")
+                return combined_df
+                
+            # Filter for books to import:
+            # 1. Paper/Hardcover (Always import)
+            # 2. eBook (Import ONLY if not present in current_combined_df to avoid duplicates with Kindle sync)
+            
+            format_col = raw_df['format'].str.lower()
+            manual_formats = ['hardcover', 'paperback', 'ebook']
+            
+            # Filter rows with relevant formats
+            relevant_df = raw_df[format_col.isin(manual_formats)].copy()
+            
+            if relevant_df.empty:
+                return combined_df
+
+            # Pre-calculate existing titles for deduplication
+            existing_titles = []
+            if not combined_df.empty and 'title' in combined_df.columns:
+                existing_titles = combined_df['title'].dropna().unique().tolist()
+                
+            # Filter for relevant formats
+            target_formats = ['hardcover', 'paperback', 'ebook']
+            
+            # Normalize format column in raw_df for filtering
+            # We use a temporary column for filtering but keep original logic if needed
+            # logic: row['format']
+            
+            # Map columns: title, author, pages, start, finish
+            rename_map = {
+                'title': 'title',
+                'author': 'authors',
+                'pages': 'pages',
+                'start': 'start_date',
+                'finish': 'end_date',
+                'language': 'language'
+                # 'format' is kept as is (but we need to handle it manually)
+            }
+            
+            synthetic_rows = []
+            
+            for idx, row in raw_df.iterrows():
+                try:
+                    # 1. Check Format
+                    fmt_raw = str(row.get('format', '')).lower().strip()
+                    if fmt_raw not in target_formats:
+                        continue
+                        
+                    # 2. Check Title & Dates
+                    title = row.get('title')
+                    if pd.isna(title): continue
+                    
+                    start_date = pd.to_datetime(row.get('start'), errors='coerce')
+                    end_date = pd.to_datetime(row.get('finish'), errors='coerce')
+                    
+                    if pd.isna(start_date) or pd.isna(end_date):
+                        continue
+                    if end_date < start_date: continue
+
+                    # 3. Deduplication Logic (Universal)
+                    # Check if title already exists in Kindle/Audio data
+                    # If so, we assume the DB version is the one we want to keep (e.g. read on Kindle)
+                    match = self._find_best_match(title, existing_titles)
+                    if match:
+                        continue
+                            
+                    # 4. Prepare Data
+                    pages = float(row.get('pages', 0)) if pd.notna(row.get('pages')) else 0
+                    if pages <= 0: pages = 200
+                    
+                    # 5. Determine App Format
+                    # App uses lowercase 'paperback', 'ebook' usually?
+                    # Visuals.py expects: 'ebook', 'paperback', 'audiobook'.
+                    # So we map Hardcover/Paperback -> paperback, eBook -> ebook.
+                    
+                    if fmt_raw in ['hardcover', 'paperback']:
+                        app_format = 'paperback'
+                    else:
+                        app_format = 'ebook'
+
+                    # 6. Create Synthetic Sessions
+                    date_range = pd.date_range(start=start_date, end=end_date, freq='D')
+                    days_count = len(date_range)
+                    if days_count == 0: days_count = 1
+                    
+                    daily_pages = pages / days_count
+                    daily_seconds = daily_pages * 60
+                    
+                    pseudo_id = -(abs(hash(title)) % 1000000)
+                    
+                    for d in date_range:
+                        session_time = d + pd.Timedelta(hours=12)
+                        session_end = session_time + pd.Timedelta(seconds=daily_seconds)
+
+                        synthetic_rows.append({
+                            'id_book': pseudo_id,
+                            'duration': daily_seconds,
+                            'pages_read': daily_pages,
+                            'start_datetime': session_time,
+                            'end_datetime': session_end,
+                            'title': title,
+                            'authors': row.get('author', 'Unknown'),
+                            'pages': pages,
+                            'language': row.get('language', 'en'),
+                            'format': app_format, 
+                            'date': session_time.date(),
+                            'year': session_time.year,
+                            'month': session_time.month,
+                            'day_of_week': session_time.dayofweek,
+                            'hour': session_time.hour,
+                            'minute': session_time.minute
+                        })
+                        
+                except Exception as e:
+                    print(f"Error processing numbers row {idx}: {e}")
+                    continue
+                    
+            if synthetic_rows:
+                new_df = pd.DataFrame(synthetic_rows)
+                combined_df = pd.concat([combined_df, new_df], ignore_index=True)
+                combined_df.sort_values('start_datetime', inplace=True)
+                print(f"Imported {len(synthetic_rows)} synthetic sessions from Numbers (Manual Import).")
+                
+            return combined_df
+        except Exception as e:
+            print(f"Failed to load manual books from Numbers: {e}")
+            return combined_df

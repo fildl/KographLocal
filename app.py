@@ -49,25 +49,21 @@ def load_data():
     kindle_data = processor.process()
     
     # Combined Data (Paper + Kindle + Audio)
-    paper_books_path = 'data/paper_books.csv'
+    combined_data = kindle_data
     audio_books_path = 'data/audio_books.csv'
     
-    combined_data = kindle_data
-    
-    if os.path.exists(paper_books_path):
-        combined_data = processor.get_data_with_paper_books(paper_books_path)
-    
     if os.path.exists(audio_books_path):
-        # Pass the current combined_df (which might already have paper books)
         combined_data = processor.get_data_with_audio_books(audio_books_path, current_combined_df=combined_data)
         
-    # --- Optional Metadata Integration from Numbers ---
-    # This path is configured for the user but can be empty or missing without breaking the app.
-    # We check if numbers-parser is available and file exists.
+    # --- Metadata & Paper Books from Numbers ---
     metadata_path = '/Users/filippodiludovico/Library/Mobile Documents/com~apple~Numbers/Documents/reading.numbers'
     metadata_df = None
     
     if NUMBERS_AVAILABLE and os.path.exists(metadata_path):
+        # 1. Load Paper Books from Numbers
+        combined_data = processor.get_paper_books_from_numbers(metadata_path, current_combined_df=combined_data)
+        
+        # 2. Enrich with Metadata (Country, Purchase Date)
         combined_data, metadata_df = processor.get_data_with_metadata(metadata_path, current_combined_df=combined_data)
         
     return kindle_data, combined_data, metadata_df
@@ -92,7 +88,13 @@ st.sidebar.markdown("---")
 # 1. Year Filter
 years = sorted(kindle_df['year'].unique().tolist(), reverse=True)
 years.insert(0, "All Time")
-selected_year = st.sidebar.selectbox("Select Year", years)
+
+current_year = pd.Timestamp.now().year
+default_index = 0
+if current_year in years:
+    default_index = years.index(current_year)
+
+selected_year = st.sidebar.selectbox("Select Year", years, index=default_index)
 
 # 2. Format Filter
 formats = ['Ebook', 'Paperback', 'Audiobook']
