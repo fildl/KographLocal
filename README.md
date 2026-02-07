@@ -61,6 +61,11 @@ Kograph Local is a **Streamlit-based dashboard** that visualizes your **Koreader
         | 2024-01-01 00:00:00 | 2024-06-01 00:00:00 | 60 |
         | 2024-06-02 00:00:00 | | -120 |
 
+    -   **Library Metadata (Optional)**: Can integrate a `.numbers` file (e.g., from Apple Numbers) to enrich books with `Country` (Author's nationality) and `Purchase Date`.
+        -   **Format**: Create a Numbers file with columns: `title`, `author`, `nationality`, `purchase`.
+        -   **Usage**: Configure the path in `app.py` (marked as optional integration).
+        -   **Visualizations**: Adds "Books by Country" and "Time from Purchase to Read" charts.
+
 ## Usage
 
 Run the Streamlit application:

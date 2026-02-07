@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
 from datetime import timedelta
+try:
+    from numbers_parser import Document
+except ImportError:
+    Document = None
 
 class DataProcessor:
     """
@@ -210,6 +214,87 @@ class DataProcessor:
         except Exception as e:
             print(f"Failed to load paper books from {csv_path}: {e}")
             return combined_df
+
+    def get_data_with_metadata(self, metadata_path, current_combined_df=None):
+        """
+        Enrich dataset with metadata from a Numbers file (e.g., Country, Purchase Date).
+        """
+        target_df = current_combined_df if current_combined_df is not None else self.merged_df.copy()
+        
+        if not Document:
+            print("numbers-parser not installed. Skipping metadata enrichment.")
+            return target_df
+
+        try:
+            doc = Document(metadata_path)
+            sheets = doc.sheets
+            if not sheets:
+                return target_df
+            
+            # Assume first table of first sheet or look for a specific one
+            # Based on inspection, data is in the first table
+            table = sheets[0].tables[0]
+            data = table.rows(values_only=True)
+            
+            if not data:
+                return target_df
+                
+            # Convert to DataFrame
+            # First row is header
+            meta_df = pd.DataFrame(data[1:], columns=data[0])
+            
+            # Normalization mapping based on inspection
+            # Found columns: title, author, nationality, purchase
+            # Map to: 'title', 'author', 'country', 'purchase_date'
+            
+            # Clean column names (strip whitespace and lower case just in case)
+            meta_df.columns = meta_df.columns.str.strip().str.lower()
+            
+            rename_map = {
+                'title': 'title_match',
+                'nationality': 'author_country',
+                'purchase': 'purchase_date'
+            }
+            
+            # Filter only relevant columns if they exist
+            cols_to_keep = [c for c in rename_map.keys() if c in meta_df.columns]
+            if 'title' not in cols_to_keep:
+                print("Metadata file missing 'title' column.")
+                return target_df
+                
+            meta_df = meta_df[cols_to_keep].copy()
+            meta_df.rename(columns=rename_map, inplace=True)
+            
+            # Normalize titles for matching
+            meta_df['title_lower'] = meta_df['title_match'].astype(str).str.lower().str.strip()
+            target_df['title_lower'] = target_df['title'].astype(str).str.lower().str.strip()
+            
+            # Merge
+            # strict inner join? No, we want to keep all reading sessions even if no metadata
+            # left join
+            # Note: duplicates in metadata (multiple rows for same book) could explode the join?
+            # Let's drop duplicates in metadata first
+            meta_df.drop_duplicates(subset=['title_lower'], inplace=True)
+            
+            target_df = target_df.merge(
+                meta_df[['title_lower', 'author_country', 'purchase_date']],
+                on='title_lower',
+                how='left'
+            )
+            
+            target_df.drop(columns=['title_lower'], inplace=True)
+            
+            # Convert purchase_date to datetime
+            if 'purchase_date' in target_df.columns:
+                target_df['purchase_date'] = pd.to_datetime(target_df['purchase_date'], errors='coerce')
+                
+            print(f"Enriched {target_df['author_country'].notna().sum()} rows with metadata.")
+            
+            return target_df
+
+        except Exception as e:
+            print(f"Failed to load metadata from {metadata_path}: {e}")
+            return target_df
 
     def get_data_with_audio_books(self, csv_path, current_combined_df=None):
         """

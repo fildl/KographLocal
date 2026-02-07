@@ -3,3 +3,4 @@ plotly>=5.15.0
 streamlit>=1.30.0
 numpy>=1.24.0
 watchdog>=3.0.0
+numbers-parser>=4.0.0
