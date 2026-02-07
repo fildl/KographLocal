@@ -3,6 +3,11 @@ import pandas as pd
 import plotly.express as px
 import os
 import sys
+try:
+    from numbers_parser import Document
+    NUMBERS_AVAILABLE = True
+except ImportError:
+    NUMBERS_AVAILABLE = False
 
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
@@ -56,11 +61,20 @@ def load_data():
         # Pass the current combined_df (which might already have paper books)
         combined_data = processor.get_data_with_audio_books(audio_books_path, current_combined_df=combined_data)
         
-    return kindle_data, combined_data
+    # --- Optional Metadata Integration from Numbers ---
+    # This path is configured for the user but can be empty or missing without breaking the app.
+    # We check if numbers-parser is available and file exists.
+    metadata_path = '/Users/filippodiludovico/Library/Mobile Documents/com~apple~Numbers/Documents/reading.numbers'
+    metadata_df = None
+    
+    if NUMBERS_AVAILABLE and os.path.exists(metadata_path):
+        combined_data, metadata_df = processor.get_data_with_metadata(metadata_path, current_combined_df=combined_data)
+        
+    return kindle_data, combined_data, metadata_df
 
 try:
     with st.spinner('Loading reading data...'):
-        kindle_df, combined_df = load_data()
+        kindle_df, combined_df, metadata_raw = load_data()
         
     # Initialize Visualizers
     viz = Visualizer(kindle_df)
@@ -175,6 +189,32 @@ c4, c5, c6 = st.columns(3)
 c4.metric("Daily Average", f"{daily_average:.0f}m")
 c5.metric("Longest Streak", f"{longest_streak} days")
 c6.metric("Current Streak", f"{current_streak} days")
+
+# --- Books Purchased Metric ---
+if metadata_raw is not None and 'purchase_date' in metadata_raw.columns:
+    # Use the RAW metadata for purchase counts
+    purchase_df = metadata_raw
+    
+    if selected_year != "All Time":
+        y = int(selected_year)
+        purchased_count = purchase_df[purchase_df['purchase_date'].dt.year == y].shape[0]
+        label = f"Purchased in {selected_year}"
+    else:
+        # Only count items that HAVE a purchase date
+        purchased_count = purchase_df['purchase_date'].notna().sum()
+        label = "Total Library (Purchased)"
+        
+    st.metric(label, f"{purchased_count}")
+elif 'purchase_date' in filtered_combined.columns:
+    # Fallback to matched data if raw metadata unavailable (shouldn't happen if NUMBERS_AVAILABLE)
+    if selected_year != "All Time":
+        purchased_count = filtered_combined[filtered_combined['purchase_date'].dt.year == int(selected_year)]['title'].nunique()
+        label = f"Purchased in {selected_year} (Read)"
+    else:
+        purchased_count = filtered_combined.loc[filtered_combined['purchase_date'].notna(), 'title'].nunique()
+        label = "Total Purchased (Read)"
+        
+    st.metric(label, f"{purchased_count}")
 
 st.markdown("---")
 
@@ -298,3 +338,32 @@ try:
         st.info("No page data available (Audiobooks may not have page counts).")
 except Exception as e:
     st.error(f"Could not render Cumulative Pages: {e}")
+# --- 8. Library Insights (Optional) ---
+# Only show if relevant metadata exists
+try:
+    if 'author_country' in filtered_combined.columns or 'purchase_date' in filtered_combined.columns:
+        st.subheader("Library Insights")
+        
+        col_lib1, col_lib2 = st.columns(2)
+        
+        with col_lib1:
+            try:
+                fig_country = viz.plot_country_distribution(year=plot_year)
+                if fig_country:
+                    st.plotly_chart(fig_country, use_container_width=True)
+                else:
+                     pass 
+            except Exception as e:
+                st.e(f"Error rendering Country Dist: {e}")
+                
+        with col_lib2:
+            try:
+                fig_purchase = viz.plot_purchase_timeline(year=plot_year)
+                if fig_purchase:
+                    st.plotly_chart(fig_purchase, use_container_width=True)
+                else:
+                    pass
+            except Exception as e:
+                st.error(f"Error rendering Purchase Timeline: {e}")
+except Exception as e:
+    pass

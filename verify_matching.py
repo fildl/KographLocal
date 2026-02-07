@@ -46,8 +46,12 @@ def verify_matching():
         return
 
     # Call the enrichment method which applies matching
-    enriched_df = processor.get_data_with_metadata(metadata_path, current_combined_df=target_data)
+    enriched_df, meta_matches = processor.get_data_with_metadata(metadata_path, current_combined_df=target_data)
     
+    if enriched_df is None:
+        print("Metadata enrichment returned None.")
+        return
+
     if 'author_country' not in enriched_df.columns:
         print("Metadata enrichment failed or produced no matches.")
         return

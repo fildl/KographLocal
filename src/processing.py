@@ -225,7 +225,7 @@ class DataProcessor:
         
         if not Document:
             print("numbers-parser not installed. Skipping metadata enrichment.")
-            return target_df
+            return target_df, None
 
         try:
             doc = Document(metadata_path)
@@ -262,7 +262,7 @@ class DataProcessor:
             cols_to_keep = [c for c in rename_map.keys() if c in meta_df.columns]
             if 'title' not in cols_to_keep:
                 print("Metadata file missing 'title' column.")
-                return target_df
+                return target_df, None
                 
             meta_df = meta_df[cols_to_keep].copy()
             meta_df.rename(columns=rename_map, inplace=True)
@@ -342,11 +342,15 @@ class DataProcessor:
                 
             print(f"Enriched {target_df['author_country'].notna().sum()} rows with metadata.")
             
-            return target_df
+            # Also convert meta_df purchase_date for external usage
+            if 'purchase_date' in meta_df.columns:
+                meta_df['purchase_date'] = pd.to_datetime(meta_df['purchase_date'], errors='coerce')
+            
+            return target_df, meta_df
 
         except Exception as e:
             print(f"Failed to load metadata from {metadata_path}: {e}")
-            return target_df
+            return target_df, None
 
     def get_data_with_audio_books(self, csv_path, current_combined_df=None):
         """
